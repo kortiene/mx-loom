@@ -1,0 +1,33 @@
+{
+  "name": "mx-loom",
+  "version": "0.0.0",
+  "description": "Weave any agent runtime into the MX-Agent coordination fabric — a portable tool layer (MCP + native bindings) for Google ADK, Claude SDK, OpenCode, Pi, and custom LLM runners.",
+  "type": "module",
+  "license": "Apache-2.0",
+  "packageManager": "pnpm@9.12.0",
+  "engines": {
+    "node": ">=20.19"
+  },
+  "homepage": "https://github.com/kortiene/mx-loom#readme",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/kortiene/mx-loom.git"
+  },
+  "bugs": {
+    "url": "https://github.com/kortiene/mx-loom/issues"
+  },
+  "keywords": [
+    "mx-agent",
+    "mx-loom",
+    "agents",
+    "agent-runtime",
+    "mcp",
+    "tool-fabric",
+    "matrix",
+    "coordination",
+    "adk",
+    "claude",
+    "opencode",
+    "pi"
+  ]
+}

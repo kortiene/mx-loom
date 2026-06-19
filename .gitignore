@@ -1,0 +1,23 @@
+# Build / dependency artifacts (root + every workspace package)
+node_modules/
+*/node_modules/
+dist/
+*/dist/
+build/
+
+# Coverage reports
+coverage/
+*/coverage/
+*.lcov
+
+# Scanner output (redacted gitleaks SARIF, etc.)
+*.sarif
+
+# Local secrets — never commit (.env.example stays committable)
+.env
+.env.*
+!.env.example
+
+# Logs / OS cruft
+*.log
+.DS_Store
