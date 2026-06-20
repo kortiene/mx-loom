@@ -77,6 +77,24 @@ runtime.
 - [Design — MX-Agent as the Coordination Fabric](docs/mx-agent-tool-fabric-design.md)
 - [Implementation backlog](docs/backlog.md)
 
+## Building mx-loom (the `adw_sdlc` harness)
+
+`adw_sdlc/` is the **agentic build harness** used to implement mx-loom itself — internal dev
+tooling, not part of the shipped tool fabric. It drives a GitHub issue (the backlog, #1–#49)
+through a phased SDLC pipeline (classify → plan → implement → tests → review → … → merge) over one
+`AgentRunner` seam with four interchangeable runners (`claude` | `codex` | `opencode` | `pi`). The
+orchestrator owns all git/gh and withholds secrets from runners (deny-by-default env allowlist).
+Phase prompts live in `.claude/commands/` + `.pi/prompts/`; the cross-engine state contract is
+`adw/state.schema.json`.
+
+```bash
+pnpm install                                # from the repo root
+pnpm -C adw_sdlc issue <N> --dry-run        # preview the plan for issue #N (no runner SDK needed)
+pnpm -C adw_sdlc issue <N> --runner claude --yes   # run the pipeline on issue #N
+```
+
+See [`adw_sdlc/PORT.md`](adw_sdlc/PORT.md) for what changed in the mx-loom port.
+
 ## The name
 
 A **loom** is the machine that holds many independent threads under tension and weaves them
