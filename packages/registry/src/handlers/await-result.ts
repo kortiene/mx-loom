@@ -22,10 +22,10 @@
  * resulting terminal state. It opens no socket, reads no env var, and never throws
  * a transport error to the caller — every path returns a {@link ToolResult}.
  */
-import type { AuditRef, ToolResult, ToolStatus } from '../envelope.js';
+import type { AuditRef, ToolResult } from '../envelope.js';
 import type { HandlerDeps } from './deps.js';
 import { faultToResult } from './handler-fault.js';
-import { invocationToResult } from './invocation.js';
+import { invocationToResult, isTerminal } from './invocation.js';
 
 /**
  * The daemon read RPC + its param name. Localised here (spec Open Question #2:
@@ -106,10 +106,6 @@ async function probe(handle: string, deps: HandlerDeps): Promise<ToolResult> {
     // pending envelope from the loop and never reaches this path) — the crux of AC 3.
     return faultToResult(err, handleAuditRef(handle));
   }
-}
-
-function isTerminal(status: ToolStatus): boolean {
-  return status === 'ok' || status === 'denied' || status === 'error';
 }
 
 /** A finite, positive `wait_ms` budget, else `0` (single-probe). The descriptor

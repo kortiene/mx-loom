@@ -4,7 +4,7 @@ Derived from [`mx-agent-tool-fabric-design.md`](./mx-agent-tool-fabric-design.md
 
 | | |
 |---|---|
-| Status | Active — M0 complete; M1 in progress — T101–T104 landed; GitHub issues live in `kortiene/mx-loom` |
+| Status | Active — M0 complete; M1 in progress — T101–T105 landed; GitHub issues live in `kortiene/mx-loom` |
 | Target repo | `kortiene/mx-loom` — this repo (branded `mx-loom`); a fresh repo, so issue numbering starts clean |
 | ID scheme | Local `T###` IDs for stable dependency refs; real GitHub numbers assigned at `gh issue create` time |
 | Estimate scale | T-shirt — **S** ≈ ½–1d · **M** ≈ 1–2d · **L** ≈ 3–5d |
@@ -219,10 +219,11 @@ M6                        ▼
 - **Scope:** Pass inner `input_schema` through from the target's `ToolSchema`; validate args; map response into the envelope (incl. `awaiting_approval`).
 - **Out of scope:** Guarded exec (T106).
 - **Acceptance criteria:**
-  - [ ] Valid call returns `status: ok` with `result` matching `output_schema`
-  - [ ] Invalid args rejected as `invalid_args` before dispatch
-  - [ ] Policy-denied target returns `policy_denied`
+  - [x] Valid call returns `status: ok` with `result` matching `output_schema`
+  - [x] Invalid args rejected as `invalid_args` before dispatch
+  - [x] Policy-denied target returns `policy_denied`
 - **Dependencies:** blocked-by T102, T104
+- **Status:** Landed (`packages/registry/src/handlers/delegate-tool.ts` — `mxDelegateTool` / `DelegateToolInput`; `invocation.ts` extended with `callResponseToResult` (the sibling of `invocationToResult`, sharing every reader/classifier, adding a success-signal path so a bare `{ok:true, result}` maps to `ok`) + `isTerminal` (shared by the T103 poll loop and the T105 inline-wait); `deps.ts` extended with `DelegateDeps`; barrel-exported from `src/handlers/index.ts` and `src/index.ts`). Four phases: (1) `agent.tools {agent_id}` → resolve the target's published `input_schema` via `projectTools` (re-fetched, never trusted from model input); (2) validate `args` against it **before** `call.start` — a mismatch returns `invalid_args` without dispatching; (3) `call.start` with the caller's or a freshly generated `idempotency_key` in params; (4) `callResponseToResult` normalizes the `CallResponse` into the envelope. A non-terminal result + positive `wait_ms` composes `mx_await_result` (inheriting T103's "expiry → pending, not timeout"). **Resolved decisions:** (#1) `callResponseToResult` as a distinct function — keeps `invocationToResult` (T103) untouched and each verb's tokenless semantics correct; (#2) client-side validation is a fast-fail convenience — an absent/malformed target schema degrades to "let the daemon decide", never a hard block; (#3) the session `room` is injected via `DelegateDeps.room` (never model input); a missing room fails fast as `internal` before any dispatch; (#4) a module-level lazy default Ajv validator covers the common path without deps wiring. First handler to emit populated `audit_ref` ids (real Matrix round-trip, `null` when omitted, never fabricated) and to exercise the idempotency contract end-to-end. **Pending the two-daemon round-trip** (`MXL_CONFORMANCE_TWO_DAEMON=1`): `call.start` param names, `CallResponse` disposition vocabulary, `approval` fields, `audit_ref` field availability — authored against the design's named shapes now, localized in module consts, with `internal`-safe fallbacks (a new daemon code degrades to `internal`, never the wrong code).
 
 #### T106 · tool: `mx_run_command` (guarded exec)
 `area/registry` `area/policy` `type/feature` `P0` · **M** · M1
