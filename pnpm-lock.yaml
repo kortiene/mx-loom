@@ -64,6 +64,9 @@ importers:
 
   packages/toolbelt:
     devDependencies:
+      '@mx-loom/registry':
+        specifier: workspace:*
+        version: link:../registry
       '@types/node':
         specifier: ^22.10.0
         version: 22.19.21

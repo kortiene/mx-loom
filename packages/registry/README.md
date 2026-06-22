@@ -7,10 +7,13 @@ secret-free set of `mx_*` tool descriptors plus a fail-fast loader/validator.
 > generated native shims (Claude, later ADK/OpenCode/Pi) — never hand-author
 > tools per runtime (design §3, §9). This package is that single source.
 
-It is **pure metadata + a validator**: no tool behavior, no daemon RPC mapping,
-no result envelope. The discovery/delegation handlers (T104–T108), the MCP
-binding (T109), the Claude shim (T110), and the JSON Schema → Zod converter
-(T111) all *read* descriptors from here.
+It is **pure metadata + a contract**: no tool behavior and no daemon RPC mapping.
+T101 shipped the descriptor model; **T102 (#10)** added the normalized **result
+envelope** every tool returns, the closed `error.code` taxonomy, and the
+client-supplied `idempotency_key` contract — still contract only, no daemon
+calls. The discovery/delegation handlers (T104–T108), the MCP binding (T109), the
+Claude shim (T110), and the JSON Schema → Zod converter (T111) all *read*
+descriptors and *build envelopes* from here.
 
 ## The descriptor model
 
@@ -68,6 +71,93 @@ descriptor does **not** bake in any target tool's schema — T105 validates `arg
 dynamically against the target agent's published `ToolSchema.input_schema` at
 dispatch (the confirmed v0.2.1 pass-through).
 
+## The result envelope (T102)
+
+**One normalized shape every mx-loom tool returns** (design §4.2), so any runtime
+binding reacts to results programmatically — `untrusted_key` → onboarding hint,
+`awaiting_approval` → keep planning, `target_offline` → retry elsewhere — without
+parsing prose.
+
+```ts
+interface ToolResult<T = unknown> {
+  readonly status: 'ok' | 'running' | 'awaiting_approval' | 'denied' | 'error';
+  readonly result: T | null;
+  readonly error: { code: ErrorCode; message: string } | null; // message: NO secrets
+  readonly handle: string | null;          // running | awaiting_approval
+  readonly approval: { request_id; risk; summary; expires_at } | null; // awaiting_approval
+  readonly audit_ref: { invocation_id; request_id; room; event_id };    // ALWAYS present
+}
+```
+
+Build envelopes **only** through the constructor helpers — they require an
+`audit_ref`, set exactly the fields a status permits, and deep-freeze the result,
+so a handler built on them conforms to the schema **by construction**:
+
+```ts
+import { ok, running, awaitingApproval, denied, errored, validateEnvelope } from '@mx-loom/registry';
+
+ok({ exit_code: 0 }, auditRef);                       // terminal success
+running('inv_01HZ…', auditRef);                        // deferred handle
+awaitingApproval('inv_…', approvalInfo, auditRef);     // held at the approval gate
+denied('policy_denied', 'not allowed by policy', auditRef);
+errored('target_offline', 'agent unreachable', auditRef);
+
+validateEnvelope(ok({ ok: true }, auditRef)); // true — the draft-07 schema is the contract (AC 1)
+```
+
+### Status ↔ field presence
+
+| `status` | `result` | `error` | `handle` | `approval` | `audit_ref` |
+|---|---|---|---|---|---|
+| `ok` | object | null | null | null | required |
+| `running` | null | null | string | null | required |
+| `awaiting_approval` | null | null | string | object | required |
+| `denied` | null | `{code ∈ denial-set}` | null | null | required |
+| `error` | null | `{code ∈ fault-set}` | null | null | required |
+
+`audit_ref` is structurally always present; its inner ids may be `null` when the
+daemon does not (yet) return them — never fabricated. The `ENVELOPE_SCHEMA`
+(draft-07, compiled via the same `createAjvValidator` seam) enforces this table
+mechanically.
+
+### The closed `error.code` taxonomy
+
+Exactly **nine** codes (`ERROR_CODES`), partitioned by the status they pair with:
+
+- **denial-set** (status `denied`) — `policy_denied`, `untrusted_key`,
+  `approval_denied`, `approval_expired`. Governance outcomes; `denied()` accepts
+  only these (`DenialCode`).
+- **fault-set** (status `error`) — `timeout`, `not_found`, `invalid_args`,
+  `target_offline`, `internal`. Operational failures; `errored()` accepts only
+  these (`FaultCode`).
+
+This set is **distinct from** the toolbelt's transport `TransportErrorCode`. Two
+mappers bridge a raw fault onto the model-facing set in one place:
+
+- `mapTransportError(code)` — exhaustive over every `TransportErrorCode`
+  (compile-checked via a `never` default; a new transport code fails the build
+  until mapped). Local-fabric faults (`not_running`/`connect_failed`/`closed`/
+  `frame`/`protocol`) → `internal`; `timeout`/`invalid_args` 1:1; a `rpc` fault is
+  routed through `mapDaemonError` when the daemon error object is available.
+- `mapDaemonError(daemonError)` — maps a daemon `CallResponse{ok:false}` /
+  JSON-RPC error object onto the set, with an **`internal` fallback** for any
+  unrecognised code (never wrong-typed, never dropped). The exact daemon
+  vocabulary is pinned at the two-daemon conformance round-trip.
+
+### Idempotency (client-supplied)
+
+Every **mutating** verb carries an optional `idempotency_key` (design §4.4):
+`mx_delegate_tool` and `mx_run_command` declare it in their `input_schema` (read
+verbs do not). A handler:
+
+- uses the caller's `idempotency_key` if present, else calls `newIdempotencyKey()`
+  (`idk_<uuid>`, `node:crypto`-backed) **once per logical invocation**;
+- places it in the outbound `call.start`/`exec.start` **params** (the daemon
+  dedupes on `idempotency_key`/`nonce`), so a retried call does not double-execute;
+- **never regenerates** it on a transport-level retry — `MxClient.withRetry`
+  reuses `params` verbatim, so a key in `params` is stable across retries with no
+  transport change. The key is a dedup nonce, **not** a credential or a capability.
+
 ## Invariants
 
 - **No-authority (the headline security property).** The registry is the closed
@@ -95,6 +185,20 @@ dispatch (the confirmed v0.2.1 pass-through).
 | #8 `guarded` hint | Omitted — guarded-ness is receiver policy, not descriptor state. |
 | #9 `version` field | Omitted — verbs are versioned by the package. |
 
+### T102 resolved decisions
+
+| # | Decision |
+|---|---|
+| #1 Envelope home | **Extend `@mx-loom/registry`** (vs. a new `@mx-loom/contract` leaf) — consistent with the `area/registry` label and T101 precedent; the registry's remit grows from "pure descriptors" to "descriptors + the result contract". |
+| #2 Status↔code partition | denial-set `{policy_denied, untrusted_key, approval_denied, approval_expired}` → `denied`; fault-set `{timeout, not_found, invalid_args, target_offline, internal}` → `error`. Compiler-enforced via `DenialCode`/`FaultCode`; schema-enforced per branch. |
+| #7 Idempotency location | The key rides in **handler-built RPC params**, not a `CallOptions` option — keeps `MxClient` method-agnostic; `withRetry`'s verbatim param reuse gives retry-stability for free. Failover stays the conservative `not_running`-only policy (unchanged). |
+| #8 Transport-code coupling | **Type-only `import type { TransportErrorCode }`** from the toolbelt (erased under `verbatimModuleSyntax`) — single source of truth, no runtime dep (toolbelt stays a devDependency). |
+| #3/#4/#5 Pending round-trip | The daemon error vocabulary (`mapDaemonError` keys), the `audit_ref` field availability, and the `idempotency_key`/`nonce` wire param name are staged behind the two-daemon conformance fixture (`MXL_CONFORMANCE_TWO_DAEMON=1`); authored against the design's named codes with safe fallbacks now. |
+
 ## Tests
 
-Pure unit tests — no daemon, no socket, no env gating. Run with `pnpm test`.
+Pure unit tests — no daemon, no socket, no env gating. Run with `pnpm test`. The
+T102 envelope/taxonomy/idempotency tests (schema conformance, the closed-set
+regression, the exhaustive mappers, and the idempotency dedup via a fake daemon)
+land in the dedicated tests phase; the live `idempotency_key` dedup + the real
+daemon error vocabulary ride the staged two-daemon conformance fixture.

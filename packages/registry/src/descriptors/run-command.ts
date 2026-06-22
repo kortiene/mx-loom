@@ -31,6 +31,11 @@ export const MX_RUN_COMMAND: ToolDescriptor = defineDescriptor({
         minimum: 0,
         description: 'Optional inline wait before returning a deferred handle (the §4.3 / T103 poll hint).',
       },
+      idempotency_key: {
+        type: 'string',
+        description:
+          'Optional client-supplied idempotency key (design §4.4): supply a stable key to make a retry of THIS SAME command idempotent (the daemon dedupes on it); omit and the handler (T106) generates one per invocation. A dedup nonce, not a credential — confers no authority.',
+      },
     },
     required: ['agent', 'command'],
     additionalProperties: false,

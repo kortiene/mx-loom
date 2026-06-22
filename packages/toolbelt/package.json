@@ -18,6 +18,7 @@
     "test:conformance": "vitest run -c vitest.conformance.config.ts"
   },
   "devDependencies": {
+    "@mx-loom/registry": "workspace:*",
     "@types/node": "^22.10.0",
     "typescript": "^5.9.3",
     "vitest": "^4.1.8"
