@@ -23,10 +23,9 @@
  * a transport error to the caller — every path returns a {@link ToolResult}.
  */
 import type { AuditRef, ToolResult, ToolStatus } from '../envelope.js';
-import { mapDaemonError, mapTransportError, type ErrorCode } from '../errors.js';
-import type { TransportErrorCode } from '@mx-loom/toolbelt';
 import type { HandlerDeps } from './deps.js';
-import { failureResult, invocationToResult } from './invocation.js';
+import { faultToResult } from './handler-fault.js';
+import { invocationToResult } from './invocation.js';
 
 /**
  * The daemon read RPC + its param name. Localised here (spec Open Question #2:
@@ -101,32 +100,12 @@ async function probe(handle: string, deps: HandlerDeps): Promise<ToolResult> {
     const raw = await deps.daemon.call(INVOCATION_GET_METHOD, { [INVOCATION_ID_PARAM]: handle });
     return invocationToResult(raw);
   } catch (err) {
-    return faultToResult(err, handle);
+    // A transport/daemon rejection maps onto the closed taxonomy via the shared
+    // fault path. A genuine transport `timeout` here is a **real** fault →
+    // `errored('timeout', …)`, DISTINCT from a `wait_ms` expiry (which returns the
+    // pending envelope from the loop and never reaches this path) — the crux of AC 3.
+    return faultToResult(err, handleAuditRef(handle));
   }
-}
-
-/**
- * Map a probe rejection onto a fault envelope. A genuine transport `timeout` here
- * is a **real** fault → `errored('timeout', …)`, which is DISTINCT from a
- * `wait_ms` expiry (that returns the pending envelope from the loop and never
- * reaches this path). This distinction is the crux of AC 3.
- */
-function faultToResult(err: unknown, handle: string): ToolResult {
-  const audit_ref = handleAuditRef(handle);
-  const code = readCode(err);
-
-  // A daemon-level JSON-RPC error (transport code `rpc`) carries the daemon's own
-  // error object; route it through `mapDaemonError` so a read of a missing/denied
-  // handle surfaces precisely (e.g. `not_found`), not as a blanket `internal`.
-  if (code === 'rpc') {
-    const cause = readProp(err, 'cause');
-    return failureResult(mapDaemonError(cause ?? err), audit_ref);
-  }
-
-  // Any other transport fault: mapped onto the model-facing taxonomy via the T102
-  // mapper (the single source of truth). `failureResult` selects `denied`/`error`
-  // by the code's set; transport codes only ever map into the fault-set.
-  return failureResult(safeMapTransport(code), audit_ref);
 }
 
 function isTerminal(status: ToolStatus): boolean {
@@ -147,29 +126,6 @@ function resolvePollInterval(ms: number | undefined): number {
 /** A transport fault carries no daemon correlation ids beyond the handle we polled. */
 function handleAuditRef(handle: string): AuditRef {
   return { invocation_id: handle, request_id: null, room: null, event_id: null };
-}
-
-/**
- * Map a (string) transport code via the T102 {@link mapTransportError}, the single
- * source of truth. That mapper is exhaustive over the closed transport set and
- * trips its `never` default on any foreign string; we guard so the resolver stays
- * total (a malformed/foreign rejection degrades to `internal`).
- */
-function safeMapTransport(code: string | undefined): ErrorCode {
-  try {
-    return mapTransportError(code as TransportErrorCode);
-  } catch {
-    return 'internal';
-  }
-}
-
-function readProp(x: unknown, key: string): unknown {
-  return x !== null && typeof x === 'object' && key in x ? (x as Record<string, unknown>)[key] : undefined;
-}
-
-function readCode(x: unknown): string | undefined {
-  const c = readProp(x, 'code');
-  return typeof c === 'string' ? c : undefined;
 }
 
 function realSleep(ms: number): Promise<void> {

@@ -7,13 +7,13 @@ secret-free set of `mx_*` tool descriptors plus a fail-fast loader/validator.
 > generated native shims (Claude, later ADK/OpenCode/Pi) — never hand-author
 > tools per runtime (design §3, §9). This package is that single source.
 
-It is **pure metadata + a contract**: no tool behavior and no daemon RPC mapping.
-T101 shipped the descriptor model; **T102 (#10)** added the normalized **result
-envelope** every tool returns, the closed `error.code` taxonomy, and the
-client-supplied `idempotency_key` contract — still contract only, no daemon
-calls. The discovery/delegation handlers (T104–T108), the MCP binding (T109), the
-Claude shim (T110), and the JSON Schema → Zod converter (T111) all *read*
-descriptors and *build envelopes* from here.
+It now ships **three layers**: the descriptor model and registry loader/validator
+(T101), the normalized result-envelope + error taxonomy + idempotency contract
+(T102), and the first three handlers — `mx_await_result` (T103), `mx_find_agents`,
+and `mx_describe_agent` (T104) — all backed by an injected daemon-call seam so
+`@mx-loom/toolbelt` stays a `devDependency`. The delegation/exec handlers
+(T105–T108), the MCP binding (T109), the Claude shim (T110), and the JSON Schema →
+Zod converter (T111) all *read* descriptors and *build envelopes* from here.
 
 ## The descriptor model
 
@@ -229,6 +229,49 @@ unrecognised state degrades to a safe `errored('internal', …)`).
 > against the design's named states now and pinned to the verified v0.2.1 surface
 > behind `MXL_CONFORMANCE_TWO_DAEMON=1`. `task.watch` (push-based) replaces the
 > poll backend in T302 (M3) without changing this tool contract.
+
+## The discovery handlers (T104)
+
+The two **discovery** verbs are `sync` **local daemon reads** — "who is in the
+workspace and what can they do?" — and the prerequisite for delegation (T105):
+you cannot call `mx_delegate_tool` until you can discover a target and read the
+`input_schema` of the tool you want to invoke.
+
+```ts
+import { mxFindAgents, mxDescribeAgent } from '@mx-loom/registry';
+import { createClient } from '@mx-loom/toolbelt';
+
+const deps = { daemon: createClient() };              // any { call } satisfies DaemonCall
+
+await mxFindAgents({ capability: 'run_tests' }, deps);
+//    ^ ok({ agents: AgentSummary[] }) — agents advertising the capability
+await mxDescribeAgent({ agent_id: 'agent_b' }, deps);
+//    ^ ok({ agent: AgentDetail, tools: PublishedTool[] }) — the target's published ToolSchema[]
+```
+
+- **`mx_find_agents`** — one `agent.list` call, then the `capability` / `tool` /
+  `liveness` filters applied **client-side** with **AND** semantics (an absent
+  filter matches all). The success payload is `{ agents: AgentSummary[] }` — the
+  array is wrapped in an object so it satisfies the envelope `ok` branch
+  (`result` must be an object). The `tool` filter reads names from the list row
+  when it carries them, else resolves `agent.tools` for the capability+liveness
+  survivors only (bounded fan-out; a per-agent fault is tolerated as "no match").
+- **`mx_describe_agent`** — `agent.tools` (the published `schemas: ToolSchema[]`,
+  with `input_schema` / `output_schema` passed through **verbatim** for T105) +
+  `agent.list` (the liveness / workspace / load the schemas RPC omits), merged and
+  projected. `agent.show` is **not** in the verified v0.2.1 surface, so it is
+  defaulted off; an unknown `agent_id` surfaces as `not_found`.
+- **Secret-free by projection.** Both verbs project the daemon `AgentState` onto a
+  strict non-secret subset and deliberately **drop** the public-but-noisy
+  identifiers (`matrix_user_id`, `device_id`, `signing_key_id`,
+  `signing_public_key`, `state_rev`) so they never reach the model context. The
+  projectors are **allowlist-by-construction** — only named fields are copied, so a
+  new upstream `AgentState` field cannot silently leak.
+- **Local read ⇒ all-null `audit_ref`.** There is no Matrix round-trip, so the
+  result carries `EMPTY_AUDIT_REF` (every id `null`, structurally present, never
+  fabricated). Both handlers **never throw** — a transport/daemon fault maps onto
+  the closed taxonomy through the shared `faultToResult` (extracted from
+  `mx_await_result`), mirroring the T103 precedent.
 
 ## Invariants
 

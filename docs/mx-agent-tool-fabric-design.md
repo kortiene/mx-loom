@@ -4,7 +4,7 @@
 
 | | |
 |---|---|
-| Status | Active — M0 complete (T001–T008 delivered); M1 in progress — T101–T103 landed; see `docs/backlog.md` |
+| Status | Active — M0 complete (T001–T008 delivered); M1 in progress — T101–T104 landed; see `docs/backlog.md` |
 | Date | 2026-06-22 |
 | Substrate pin | mx-agent `v0.2.1` (alpha) |
 | Closes | mx-agency #37 (SDK seam) |
@@ -78,8 +78,8 @@ The daemon has ~45 RPC methods; most are operator/crypto/lifecycle plumbing that
 
 | Tool (model-facing) | Maps to daemon RPC | Purpose |
 |---|---|---|
-| `mx_find_agents` | `agent.list` (+capability filter) | Discover agents by capability/tool/liveness |
-| `mx_describe_agent` | `agent.show` + `agent.tools` | Inspect one agent and the `ToolSchema[]` it offers |
+| `mx_find_agents` | `agent.list` (+capability filter) | Discover agents by capability/tool/liveness (T104: capability / tool / liveness filters applied **client-side** with AND semantics; result projected to a non-secret `AgentSummary[]` — `matrix_user_id`, signing identifiers deliberately excluded) |
+| `mx_describe_agent` | `agent.show` + `agent.tools` | Inspect one agent and the `ToolSchema[]` it offers (the v0.2.1 T104 handler uses `agent.list` + `agent.tools` — the **verified** surface — since `agent.show` is unconfirmed on v0.2.1; see `docs/mx-agent-surface-v0.2.1.md`) |
 | `mx_workspace_status` | `workspace.status` | Who/what is in the workspace (agents, tasks, project) |
 | `mx_delegate_tool` | `call.start` → `CallRequest`/`CallResponse` | **Primary delegation verb** — invoke a *named tool* on a remote agent with JSON args |
 | `mx_run_command` *(guarded)* | `exec.start` → `ExecRequest` | Run an allowlisted command on a remote agent. Disabled by default; enabled per-agent via `allow_commands` + `deny_args_regex` |
@@ -116,7 +116,7 @@ The canonical registry is transport-neutral. **MCP is the universal binding** (e
 
 **Custom runners.** Anything that can (a) call a Unix socket and (b) accept a JSON-Schema tool list gets the tools for free — point it at the MCP server, or link the toolbelt library directly.
 
-> **Build rule:** never hand-author tools per runtime. One canonical descriptor set → generated MCP server + generated native shims (ADK `LongRunningFunctionTool`, Claude `canUseTool`) from day one. *(That canonical descriptor set is now a concrete, validated, enumerable module — `@mx-loom/registry` (T101). The generators themselves are T109/T110, still to come.)*
+> **Build rule:** never hand-author tools per runtime. One canonical descriptor set → generated MCP server + generated native shims (ADK `LongRunningFunctionTool`, Claude `canUseTool`) from day one. *(That canonical descriptor set is now a concrete, validated, enumerable module — `@mx-loom/registry` (T101). The discovery handlers `mxFindAgents` + `mxDescribeAgent` (T104) are live — the prerequisite for `mx_delegate_tool` (T105): a caller can discover a target agent and read its published `ToolSchema.input_schema` before delegating. The generators themselves are T109/T110, still to come.)*
 
 ---
 
