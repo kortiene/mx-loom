@@ -24,7 +24,7 @@
 import { existsSync } from 'node:fs';
 
 import { CliClient } from './cli/client.js';
-import { assertNoCredentialShapedArgs } from './guards.js';
+import { assertNoCredentialShapedArgs, redactSecrets } from './guards.js';
 import { IpcClient } from './ipc/client.js';
 import { resolveSocketPath } from './ipc/socket-path.js';
 import type { DaemonStatus } from './ipc/types.js';
@@ -135,18 +135,31 @@ export class MxClient implements MxTransport {
 
   /** Invoke a daemon RPC method and resolve with its `result`. */
   async call(method: string, params?: unknown, options?: CallOptions): Promise<unknown> {
-    // Hoisted credential guard — runs BEFORE dispatch to EITHER transport, so a
-    // credential-shaped arg is rejected uniformly (closes the IPC-path gap).
+    // Outbound (existing): hoisted credential guard — runs BEFORE dispatch to
+    // EITHER transport, so a credential-shaped arg is rejected uniformly (closes
+    // the IPC-path gap).
     assertNoCredentialShapedArgs(params);
 
+    let result: unknown;
     switch (this.#preference) {
       case 'ipc':
-        return await this.#attempt('ipc', method, params, options);
+        result = await this.#attempt('ipc', method, params, options);
+        break;
       case 'cli':
-        return await this.#attempt('cli', method, params, options);
+        result = await this.#attempt('cli', method, params, options);
+        break;
       default:
-        return await this.#callAuto(method, params, options);
+        result = await this.#callAuto(method, params, options);
     }
+
+    // Inbound (T008): defense-in-depth result redaction at the single call()
+    // exit point — covers IPC, CLI, retry, and failover uniformly, exactly once
+    // per logical call. The daemon owns secrets out-of-process and must never
+    // return one; this is the backstop if a daemon bug ever surfaced a
+    // token-shaped value into a result the model would read.
+    return redactSecrets(result, (path) =>
+      this.#debug(`redacted secret-shaped value in ${method} result at ${path}`),
+    );
   }
 
   /** Convenience: `daemon.status`. Inherits selection + retry via {@link call}. */

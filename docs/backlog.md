@@ -4,7 +4,7 @@ Derived from [`mx-agent-tool-fabric-design.md`](./mx-agent-tool-fabric-design.md
 
 | | |
 |---|---|
-| Status | Active — M0 in progress; GitHub issues live in `kortiene/mx-loom` (T001–T007 delivered; T008 open) |
+| Status | Active — M0 in progress; GitHub issues live in `kortiene/mx-loom` (T001–T008 delivered) |
 | Target repo | `kortiene/mx-loom` — this repo (branded `mx-loom`); a fresh repo, so issue numbering starts clean |
 | ID scheme | Local `T###` IDs for stable dependency refs; real GitHub numbers assigned at `gh issue create` time |
 | Estimate scale | T-shirt — **S** ≈ ½–1d · **M** ≈ 1–2d · **L** ≈ 3–5d |
@@ -155,8 +155,10 @@ M6                        ▼
 - **Scope:** Outbound arg scrubber + inbound result redaction; deny-list + tests; reject credential-shaped args.
 - **Out of scope:** Sandbox enforcement (daemon-side).
 - **Acceptance criteria:**
-  - [ ] Attempt to pass a secret-shaped arg is rejected with `invalid_args`
-  - [ ] No allowlisted-secret env var appears in any tool payload (test asserts)
+  - [x] Attempt to pass a secret-shaped arg is rejected with `invalid_args` — hardened `assertNoCredentialShapedArgs` (`src/guards.ts`): boundaried `token` (rejects `GH_TOKEN`/`*_token`, accepts `max_tokens`/`token_count`) + `mx_agent_` keys + `sk-ant-`/bounded `sk-`/`AKIA…`/PEM value prefixes (`test/guards.test.ts`).
+  - [x] No allowlisted-secret env var appears in any tool payload (test asserts) — `test/secret-boundary.test.ts` asserts across CLI argv/stdin/child-env and the IPC request frame; `safeSubprocessEnv` (`src/cli/env.ts`) denies `_TOKEN`/`_API_KEY`/`_SECRET`/`_ACCESS_KEY` + exact `GH_TOKEN` even via `extraAllow` (keeps `MXL_*`).
+- **Modules:** `src/guards.ts` (hardened deny-list + new `redactSecrets`/`REDACTION_PLACEHOLDER`), `src/client.ts` (inbound redaction on the `MxClient.call` exit point), `src/cli/env.ts` (`extraAllow`-proof deny). Tests: `test/guards.test.ts` (hardened reject + false-positive accept), `test/redaction.test.ts`, `test/secret-boundary.test.ts`, `test/cli-env.test.ts`.
+- **Note:** false-positive refinement — `token` matched **boundaried** (`(?:^|[_-])token$`), not as a substring, so delegation pass-through keys (`max_tokens`/`token_count`/`num_tokens`) are accepted while credential `*_token` keys reject. Inbound `redactSecrets` is value-shape-only defense-in-depth (never by key name), not the boundary itself.
 - **Dependencies:** blocked-by T004
 
 ---

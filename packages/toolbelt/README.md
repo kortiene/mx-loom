@@ -73,16 +73,44 @@ setup, before any request is sent). It deliberately does **not** retry `timeout`
 Likewise, IPC→CLI failover triggers on `not_running` *only* for the same reason:
 re-issuing any other failure on the CLI could double-execute a mutating call.
 
-### Secret boundary
+### Secret boundary (Boundary A · T008)
 
-The unified layer does **not** weaken the boundary the transports enforce. The
-CLI leg always spawns under the deny-by-default `safeSubprocessEnv`
-(`MATRIX_*` / `MX_AGENT_*` dropped; no `*_TOKEN` / `*_API_KEY` / `GH_TOKEN`), and
-the credential-shaped-arg guard (`assertNoCredentialShapedArgs`, hoisted to
-`src/guards.ts`) runs **before dispatch to either transport** — so a
-credential-shaped key/value is rejected as `invalid_args` uniformly, on IPC and
-CLI alike. Diagnostics carry only the error code, transport name, socket path,
-CLI bin name, and attempt number — never params, env values, or raw output.
+The unified layer does **not** weaken the boundary the transports enforce. "No
+secret crosses Boundary A" — `MATRIX_*`, `MX_AGENT_*`, the Ed25519 **private**
+signing key, provider API keys, and `GH_TOKEN` never reach the runtime process,
+the model context, or the CLI child. The toolbelt is the chokepoint, enforcing
+this on three edges:
+
+- **Outbound — reject credential-shaped args.** `assertNoCredentialShapedArgs`
+  (`src/guards.ts`) runs **before dispatch to either transport**, so a
+  credential-shaped key/value is rejected as `invalid_args` uniformly on IPC and
+  CLI alike. The deny-list covers the allowlisted-secret shapes the rule names:
+  credential **keys** (`secret` / `password` / `*api[_-]?key` / `signing[_-]?key`
+  / `private[_-]?key` / `matrix_*` / `mx_agent_*` / `gh_token` / a **boundaried**
+  `token` — so `GH_TOKEN` / `access_token` reject while pass-through count keys
+  like `max_tokens` / `token_count` pass), and credential **value** prefixes
+  (GitHub / Matrix / Slack tokens, `sk-ant-`, length-bounded OpenAI `sk-`, AWS
+  `AKIA…`, PEM private-key headers). Error messages name only the key/path,
+  never the value.
+- **Env edge — deny-by-default allowlist `extraAllow` cannot widen.** The CLI leg
+  always spawns under `safeSubprocessEnv`: `MATRIX_*` / `MX_AGENT_*` are dropped,
+  and any known-secret-shaped name — suffix `_TOKEN` / `_API_KEY` / `_SECRET` /
+  `_ACCESS_KEY` or exact `GH_TOKEN` — is denied **even when passed via
+  `extraAllow`**, so a caller can never re-admit a known secret into a tool
+  payload or the child env. The toolbelt's own non-secret `MXL_*` namespace
+  (e.g. `MXL_AGENT_BIN`) stays forwardable.
+- **Inbound — redact secret-shaped values from results (defense-in-depth).**
+  `redactSecrets` runs on every `MxClient.call` resolved result, replacing any
+  **known secret-shaped value** (the same value-shape set, **never** by key name)
+  with the fixed, non-reversible placeholder `«redacted»` before the result
+  returns toward the model context. This is a **backstop, not the boundary**: the
+  daemon owns secrets out-of-process and must never return one (the conformance
+  Tier 1 secret-boundary assertion is the contract). Redaction guarantees that
+  *even if* a daemon bug leaked a token-shaped value, it cannot reach the model.
+
+Diagnostics carry only the error code, transport name, socket path, CLI bin
+name, attempt number, and (for a redaction) the method + result path — never
+params, env values, raw output, or the secret value itself.
 
 ## Sessions + agent registration (T005)
 
@@ -148,7 +176,9 @@ every heartbeat tick, and no env surface is added. Registration is toolbelt-run
 | `AgentState`, `AgentListEntry`, `AgentLiveness` | types | typed view of `agent.register` / `agent.list` payloads |
 | `IpcClient`, `CliClient` | classes | the underlying transports (use directly only to pin behavior) |
 | `MxTransport`, `CallOptions`, `TransportError`, `TransportErrorCode` | seam | shared interface + closed error taxonomy |
-| `assertNoCredentialShapedArgs`, `CREDENTIAL_KEY_RE`, `CREDENTIAL_VALUE_RE` | guard | shared secret-boundary guard (T008 hardens) |
+| `assertNoCredentialShapedArgs`, `CREDENTIAL_KEY_RE`, `CREDENTIAL_VALUE_RE` | outbound guard | hardened secret-boundary arg scrubber (rejects credential-shaped args → `invalid_args`) |
+| `redactSecrets`, `REDACTION_PLACEHOLDER` | inbound guard | defense-in-depth result redaction on the `MxClient.call` seam (value-shape only) |
+| `safeSubprocessEnv`, `isDeniedEnvKey`, `BASE_ENV_ALLOW`, `ENV_DENY_PREFIXES`, `ENV_DENY_SUFFIXES`, `ENV_DENY_EXACT` | env guard | deny-by-default CLI-child env; `extraAllow` cannot re-admit a known secret |
 
 ## Development
 

@@ -1,0 +1,9 @@
+# Reviewed false positives.
+#
+# The toolbelt secret-boundary guard (T008) detects PEM private-key *headers*.
+# Its tests therefore carry the literal header strings as fixtures — they are
+# the pattern the guard rejects, not real key material (the body is the 4-char
+# stub `MIIE...`). gitleaks' default `private-key` rule matches the header
+# alone, so it flags the very test that proves the guard works.
+packages/toolbelt/test/guards.test.ts:private-key:227
+packages/toolbelt/test/guards.test.ts:private-key:228

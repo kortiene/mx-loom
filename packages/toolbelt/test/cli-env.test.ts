@@ -1,6 +1,13 @@
 import { describe, expect, it } from 'vitest';
 
-import { BASE_ENV_ALLOW, ENV_DENY_PREFIXES, safeSubprocessEnv } from '../src/cli/env.js';
+import {
+  BASE_ENV_ALLOW,
+  ENV_DENY_EXACT,
+  ENV_DENY_PREFIXES,
+  ENV_DENY_SUFFIXES,
+  isDeniedEnvKey,
+  safeSubprocessEnv,
+} from '../src/cli/env.js';
 
 describe('safeSubprocessEnv', () => {
   describe('deny-by-default', () => {
@@ -171,6 +178,86 @@ describe('BASE_ENV_ALLOW', () => {
 
   it('does not include SHELL (child resolves its own shell if needed)', () => {
     expect(BASE_ENV_ALLOW).not.toContain('SHELL');
+  });
+});
+
+describe('hardened known-secret deny (T008) — extraAllow cannot re-admit a known secret', () => {
+  const reAdmitCases: Array<[string, string]> = [
+    ['GH_TOKEN (exact + _TOKEN suffix)', 'GH_TOKEN'],
+    ['GITHUB_TOKEN (_TOKEN suffix)', 'GITHUB_TOKEN'],
+    ['ANTHROPIC_API_KEY (_API_KEY suffix)', 'ANTHROPIC_API_KEY'],
+    ['OPENAI_API_KEY (_API_KEY suffix)', 'OPENAI_API_KEY'],
+    ['AWS_SECRET_ACCESS_KEY (_ACCESS_KEY suffix)', 'AWS_SECRET_ACCESS_KEY'],
+    ['CLIENT_SECRET (_SECRET suffix)', 'CLIENT_SECRET'],
+    ['MATRIX_ACCESS_TOKEN (MATRIX_ prefix)', 'MATRIX_ACCESS_TOKEN'],
+    ['MX_AGENT_SIGNING_KEY (MX_AGENT_ prefix)', 'MX_AGENT_SIGNING_KEY'],
+  ];
+
+  for (const [label, key] of reAdmitCases) {
+    it(`drops ${label} even when listed in extraAllow`, () => {
+      const env = safeSubprocessEnv({
+        source: { HOME: '/home/test', [key]: 'fake-secret-value' },
+        extraAllow: [key],
+      });
+      expect(env).not.toHaveProperty(key);
+    });
+  }
+
+  it('still forwards the non-secret MXL_AGENT_BIN override via extraAllow', () => {
+    const env = safeSubprocessEnv({
+      source: { HOME: '/home/test', MXL_AGENT_BIN: '/opt/mx-agent' },
+      extraAllow: ['MXL_AGENT_BIN'],
+    });
+    expect(env['MXL_AGENT_BIN']).toBe('/opt/mx-agent');
+  });
+
+  it('matches deny suffixes case-insensitively (lowercase env names)', () => {
+    const env = safeSubprocessEnv({
+      source: { HOME: '/home/test', custom_token: 'x', service_secret: 'y' },
+      extraAllow: ['custom_token', 'service_secret'],
+    });
+    expect(env).not.toHaveProperty('custom_token');
+    expect(env).not.toHaveProperty('service_secret');
+  });
+});
+
+describe('isDeniedEnvKey', () => {
+  it('denies deny-prefixed keys (MATRIX_*, MX_AGENT_*)', () => {
+    expect(isDeniedEnvKey('MATRIX_ACCESS_TOKEN')).toBe(true);
+    expect(isDeniedEnvKey('MX_AGENT_SIGNING_KEY')).toBe(true);
+  });
+
+  it('denies credential suffixes (_TOKEN, _API_KEY, _SECRET, _ACCESS_KEY)', () => {
+    expect(isDeniedEnvKey('GH_TOKEN')).toBe(true);
+    expect(isDeniedEnvKey('ANTHROPIC_API_KEY')).toBe(true);
+    expect(isDeniedEnvKey('CLIENT_SECRET')).toBe(true);
+    expect(isDeniedEnvKey('AWS_SECRET_ACCESS_KEY')).toBe(true);
+  });
+
+  it('allows non-secret keys, including the MXL_* namespace and base resolution vars', () => {
+    expect(isDeniedEnvKey('MXL_AGENT_BIN')).toBe(false);
+    expect(isDeniedEnvKey('HOME')).toBe(false);
+    expect(isDeniedEnvKey('PATH')).toBe(false);
+    expect(isDeniedEnvKey('XDG_RUNTIME_DIR')).toBe(false);
+  });
+
+  it('does not deny any key in BASE_ENV_ALLOW (no accidental allowlist poisoning)', () => {
+    for (const key of BASE_ENV_ALLOW) {
+      expect(isDeniedEnvKey(key), `${key} is incorrectly denied`).toBe(false);
+    }
+  });
+});
+
+describe('ENV_DENY_SUFFIXES / ENV_DENY_EXACT', () => {
+  it('cover the credential suffixes the rule names', () => {
+    expect(ENV_DENY_SUFFIXES).toContain('_TOKEN');
+    expect(ENV_DENY_SUFFIXES).toContain('_API_KEY');
+    expect(ENV_DENY_SUFFIXES).toContain('_SECRET');
+    expect(ENV_DENY_SUFFIXES).toContain('_ACCESS_KEY');
+  });
+
+  it('name GH_TOKEN explicitly', () => {
+    expect(ENV_DENY_EXACT).toContain('GH_TOKEN');
   });
 });
 
