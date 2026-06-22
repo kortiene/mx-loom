@@ -1,0 +1,181 @@
+# Contract conformance suite — the executable pin-bump gate (T007 / #7).
+#
+# This is the FIRST GitHub Actions workflow in mx-loom. It runs the toolbelt's
+# conformance suite (packages/toolbelt/test/conformance/) against a LIVE, pinned
+# mx-agent daemon and goes red on surface drift — the gate docs/mx-agent-pin.md
+# already names.
+#
+# Jobs (cheap → expensive):
+#   1. structure   — always: install, typecheck, fast suite, and a daemon-free
+#                    conformance load (proves the suite is wired + skips cleanly).
+#   2. live        — Tier 0/1 against a single live daemon (MXL_CONFORMANCE=1).
+#   3. delegate    — Tier 2 `call.start` against a two-daemon fixture
+#                    (MXL_CONFORMANCE_TWO_DAEMON=1).
+#
+# The pin (.mx-agent-version) is the single source of truth — never hard-code the
+# tag. `workflow_dispatch` exposes a `version` input so a pin-bump PR can run the
+# gate against a CANDIDATE version before editing .mx-agent-version.
+#
+# Provenance (open decision, see specs/.../Risks #2): the live jobs need the
+# pinned mx-agent RELEASE binary and a throwaway Matrix homeserver. They check
+# out the mx-agent repo at the pin and reuse its dev/matrix tooling
+# (scripts/conformance/ wraps the bring-up). Until that provenance is wired into
+# this workflow the live jobs are `workflow_dispatch`-only (opt-in via the
+# run_live / run_two_daemon inputs) — pushes and PRs never trigger them, so a
+# missing-infra run can't paint main or a PR red. But when they ARE dispatched,
+# a missing/unreachable daemon is a HARD failure (no silent skip).
+
+name: conformance
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+  workflow_dispatch:
+    inputs:
+      version:
+        description: Candidate mx-agent version to gate (defaults to .mx-agent-version)
+        required: false
+        type: string
+      run_live:
+        description: Run the live single-daemon tiers (Tier 0/1)
+        required: false
+        type: boolean
+        default: true
+      run_two_daemon:
+        description: Run the two-daemon delegation tier (Tier 2 — call.start)
+        required: false
+        type: boolean
+        default: false
+
+concurrency:
+  group: conformance-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  # ---------------------------------------------------------------------------
+  # Resolve the pin once; every downstream job reads this output.
+  # ---------------------------------------------------------------------------
+  pin:
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.resolve.outputs.version }}
+    steps:
+      - uses: actions/checkout@v4
+      - id: resolve
+        name: Resolve mx-agent pin
+        run: |
+          set -euo pipefail
+          override='${{ inputs.version }}'
+          if [ -n "$override" ]; then
+            version="$override"
+          else
+            version="$(tr -d '[:space:]' < .mx-agent-version)"
+          fi
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          echo "Resolved mx-agent pin: $version"
+
+  # ---------------------------------------------------------------------------
+  # Always-on: prove the suite is wired and the fast unit/integration CI stays
+  # daemon-free. Runs the conformance suite WITHOUT MXL_CONFORMANCE, so a missing
+  # daemon skips cleanly — this never blocks a PR, it just proves the wiring.
+  # ---------------------------------------------------------------------------
+  structure:
+    runs-on: ubuntu-latest
+    needs: pin
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - name: Typecheck
+        run: pnpm --filter @mx-loom/toolbelt typecheck
+      - name: Fast suite (daemon-free; conformance excluded)
+        run: pnpm --filter @mx-loom/toolbelt test
+      - name: Conformance suite loads + skips cleanly without a daemon
+        run: pnpm --filter @mx-loom/toolbelt test:conformance
+
+  # ---------------------------------------------------------------------------
+  # Tier 0/1 — single live daemon. MXL_CONFORMANCE=1 makes a missing/unreachable
+  # daemon a HARD failure (the gate). `workflow_dispatch`-only (run_live input)
+  # until homeserver/binary provenance is wired in — never runs on push/PR.
+  # ---------------------------------------------------------------------------
+  live:
+    runs-on: ubuntu-latest
+    needs: pin
+    if: github.event_name == 'workflow_dispatch' && inputs.run_live
+    env:
+      MX_AGENT_VERSION: ${{ needs.pin.outputs.version }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+
+      # Provenance (see scripts/conformance/README.md): install the pinned binary
+      # and stand up a throwaway homeserver, then bootstrap daemon A.
+      - name: Install pinned mx-agent binary
+        run: scripts/conformance/install-mx-agent.sh "$MX_AGENT_VERSION"
+      - name: Bring up homeserver + daemon A
+        id: bootstrap
+        run: scripts/conformance/bootstrap-daemon-a.sh
+
+      - name: Run conformance Tier 0/1 (MXL_CONFORMANCE=1)
+        env:
+          MXL_CONFORMANCE: '1'
+          MXL_CONFORMANCE_SOCKET: ${{ steps.bootstrap.outputs.socket }}
+        run: pnpm --filter @mx-loom/toolbelt test:conformance
+
+      - name: Teardown (always; scrub before any upload)
+        if: always()
+        run: scripts/conformance/down.sh
+
+  # ---------------------------------------------------------------------------
+  # Tier 2 — two-daemon `call.start` delegation. The costly path: a second daemon
+  # B, a shared room, mutual Ed25519 trust, and a minimal allow-policy on B. Gated
+  # behind an explicit dispatch input so the cheap tiers land first.
+  # ---------------------------------------------------------------------------
+  delegate:
+    runs-on: ubuntu-latest
+    needs: [pin, live]
+    if: github.event_name == 'workflow_dispatch' && inputs.run_two_daemon
+    env:
+      MX_AGENT_VERSION: ${{ needs.pin.outputs.version }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - name: Install pinned mx-agent binary
+        run: scripts/conformance/install-mx-agent.sh "$MX_AGENT_VERSION"
+      - name: Bring up homeserver + daemon A
+        id: bootstrap_a
+        run: scripts/conformance/bootstrap-daemon-a.sh
+      - name: Bring up daemon B + target agent + trust + policy
+        id: bootstrap_b
+        run: scripts/conformance/bootstrap-daemon-b.sh
+      - name: Run conformance Tier 2 (MXL_CONFORMANCE_TWO_DAEMON=1)
+        env:
+          MXL_CONFORMANCE: '1'
+          MXL_CONFORMANCE_TWO_DAEMON: '1'
+          MXL_CONFORMANCE_SOCKET: ${{ steps.bootstrap_a.outputs.socket }}
+          MXL_CONFORMANCE_ROOM: ${{ steps.bootstrap_a.outputs.room }}
+          MXL_CONFORMANCE_TARGET_AGENT: ${{ steps.bootstrap_b.outputs.agent }}
+          MXL_CONFORMANCE_TOOL: ${{ steps.bootstrap_b.outputs.tool }}
+          MXL_CONFORMANCE_DENIED_TOOL: ${{ steps.bootstrap_b.outputs.denied_tool }}
+        run: pnpm --filter @mx-loom/toolbelt test:conformance
+      - name: Teardown (always)
+        if: always()
+        run: scripts/conformance/down.sh

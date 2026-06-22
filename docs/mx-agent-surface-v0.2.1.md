@@ -43,7 +43,7 @@ Observed for `run_tests@1.0.0` exactly as the design-doc example: input `{packag
 
 | Method (RPC / CLI) | Status | Note |
 |---|---|---|
-| `call.start` (delegate named tool) | ◻️ flags confirmed | needs a second target agent to round-trip `CallRequest`→`CallResponse` |
+| `call.start` (delegate named tool) | ◻️ flags confirmed · round-trip staged | conformance Tier 2 (`packages/toolbelt/test/conformance/delegate.conformance.test.ts`, T007) round-trips `CallRequest`→`CallResponse`; gated behind the two-daemon fixture (`MXL_CONFORMANCE_TWO_DAEMON=1`). Flip to ✅ once that fixture runs green in CI. |
 | `exec.start` (guarded command) | ◻️ flags confirmed | same; receiver-side policy/approval gate |
 | `task.create/update/list/graph` | ◻️ flags confirmed | `task create --room --title [--tool --arg/--input-json --exec --depends-on --blocks --assign --state]` — matches the DAG + signed-action model |
 | `share.file/diff/env` · `approval.decide` · `invocation.*` | ◻️ documented | exercise in the conformance suite (T007 / #7) with a two-daemon fixture |
@@ -89,8 +89,10 @@ same base64 SHA-256 digest (`mxagent-ed25519:<x>` and `SHA256:<x>`).
   `$TMPDIR/mx-agent/daemon.sock` (macOS) / `$XDG_RUNTIME_DIR/mx-agent/daemon.sock`, framed JSON-RPC 2.0.
 - `agent.register` / `agent.list` / `agent.tools` are ready to back `mx_find_agents` /
   `mx_describe_agent` (T104) and the `input_schema` pass-through of `mx_delegate_tool` (T105).
-- Full delegation (`call.start`) and the conformance suite (T007 / #7) need a **two-daemon fixture** —
-  reuse `mx-agent/dev/matrix` + a second registered agent.
+- The conformance suite (T007 / #7) is built (`packages/toolbelt/test/conformance/`,
+  `.github/workflows/conformance.yml`): Tier 0/1 (`agent.register` / `agent.list` + error taxonomy)
+  are **green on v0.2.1**; full delegation (`call.start`, Tier 2) is staged behind the **two-daemon
+  fixture** — reuse `mx-agent/dev/matrix` + a second registered agent (`scripts/conformance/`).
 
 ---
 _Verified 2026-06-22 against a local Tuwunel homeserver. Reproduce: `mx-agent/scripts/matrix_dev.sh up`,

@@ -1,0 +1,21 @@
+# Minimal receiver-side policy fixture for daemon B (conformance Tier 2, T007 / #7).
+#
+# Throwaway, scoped to the conformance bring-up ONLY. The canonical golden-test
+# policy is T112 (M1) — converge on it later (see the spec's Risks #5). The shape
+# below is deny-by-default: B authorizes exactly the one allowed tool and nothing
+# else, so the policy-denied negative case (a call.start to @@DENY_TOOL@@) is a
+# REAL enforcement decision, not a missing registration.
+#
+# `@@ALLOW_TOOL@@` / `@@DENY_TOOL@@` are substituted by bootstrap-daemon-b.sh.
+
+# Deny-by-default: no tool is callable unless an allow rule matches.
+default = "deny"
+
+# The single allowed named tool. No approval gate (the approval round-trip is
+# M1 / T114) — Tier 2 exercises a non-approval-gated tool.
+[[allow]]
+tool = "@@ALLOW_TOOL@@"
+requires_approval = false
+
+# @@DENY_TOOL@@ is intentionally NOT listed — it falls through to `default = deny`,
+# which is what the Tier 2 policy-denied assertion verifies.

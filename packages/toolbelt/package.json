@@ -14,7 +14,8 @@
   "scripts": {
     "typecheck": "tsc --noEmit",
     "build": "tsc -p tsconfig.build.json",
-    "test": "vitest run"
+    "test": "vitest run",
+    "test:conformance": "vitest run -c vitest.conformance.config.ts"
   },
   "devDependencies": {
     "@types/node": "^22.10.0",

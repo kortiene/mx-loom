@@ -155,6 +155,15 @@ describe('assertNoCredentialShapedArgs', () => {
     expect(() => assertNoCredentialShapedArgs({ name: 'gh_not_a_real_prefix' })).not.toThrow();
   });
 
+  it('does not reject a string whose credential-shaped prefix appears mid-value (CREDENTIAL_VALUE_RE is anchored with ^)', () => {
+    // The regex is /^(?:gh[posru]_|...)/ — it only matches values that START with
+    // the prefix. A log line, doc string, or descriptive value that merely contains
+    // a token-shaped substring is intentionally allowed through to avoid false
+    // positives on non-secret strings.
+    expect(() => assertNoCredentialShapedArgs({ note: 'see ghp_example in the docs' })).not.toThrow();
+    expect(() => assertNoCredentialShapedArgs({ msg: 'token format is syt_<base64>' })).not.toThrow();
+  });
+
   it('rejects credential-shaped keys without separators (signingkey, privatekey)', () => {
     expect(() => assertNoCredentialShapedArgs({ signingkey: 'x' })).toThrow(TransportError);
     expect(() => assertNoCredentialShapedArgs({ privatekey: 'x' })).toThrow(TransportError);
