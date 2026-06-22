@@ -5,8 +5,9 @@
 // daemon (a structural subset of the toolbelt's `MxTransport`, imported
 // `type`-only), so the registry keeps its zero runtime toolbelt dependency.
 
-// The injected daemon-call seam + clock seams (+ the T105 delegation deps).
-export type { DaemonCall, HandlerDeps, DelegateDeps } from './deps.js';
+// The injected daemon-call seam + clock seams (+ the room-scoped seam shared by
+// the T105 delegation deps and the T106 guarded-exec deps).
+export type { DaemonCall, HandlerDeps, RoomScopedDeps, DelegateDeps, ExecDeps } from './deps.js';
 
 // The pure invocation-state → envelope normalizers (useful to bindings + tests):
 // `invocationToResult` for an `invocation.get` read (T103), `callResponseToResult`
@@ -29,6 +30,13 @@ export type { DescribeAgentInput, DescribeAgentResult } from './describe-agent.j
 // audit_ref ids and to exercise the idempotency contract end-to-end.
 export { mxDelegateTool } from './delegate-tool.js';
 export type { DelegateToolInput } from './delegate-tool.js';
+
+// The guarded-exec handler (T106): `mx_run_command` (room provenance → exec.start
+// with idempotency → normalize the ExecResponse), the leaner sibling of T105 (no
+// inner-schema fetch/validation). The guard is entirely receiver-side: the handler
+// surfaces `policy_denied` cleanly, never enforces it.
+export { mxRunCommand } from './run-command.js';
+export type { RunCommandInput } from './run-command.js';
 
 // The pure agent-record projectors (non-secret subset) + their model-facing types.
 export { projectAgentSummary, projectAgentDetail, projectTools } from './agent-projection.js';

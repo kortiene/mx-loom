@@ -108,3 +108,15 @@ export type {
 // `DelegateDeps` add an injected JSON Schema `validator` + the session `room`.
 export { mxDelegateTool } from './handlers/index.js';
 export type { DelegateToolInput, DelegateDeps } from './handlers/index.js';
+
+// The guarded-exec handler (T106): `mx_run_command` — the second delegation verb
+// (room provenance → exec.start with idempotency → normalize the ExecResponse,
+// reusing `callResponseToResult`). The leaner sibling of T105: no inner-schema
+// fetch, no args validation. The guard (allow_commands / deny_args_regex /
+// allow_cwd / sandbox / requires_approval) runs entirely out-of-process on the
+// receiving daemon; the handler surfaces `policy_denied` cleanly, never enforces
+// it. Its `ExecDeps` carry the session `room` (the room-scoped seam) and NO
+// validator. A permitted command that exits non-zero is `status: ok` with
+// `result.exit_code !== 0` (governance outcome, not the command's exit).
+export { mxRunCommand } from './handlers/index.js';
+export type { RunCommandInput, ExecDeps, RoomScopedDeps } from './handlers/index.js';

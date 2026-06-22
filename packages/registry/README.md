@@ -10,9 +10,9 @@ secret-free set of `mx_*` tool descriptors plus a fail-fast loader/validator.
 It now ships **three layers**: the descriptor model and registry loader/validator
 (T101), the normalized result-envelope + error taxonomy + idempotency contract
 (T102), and the handlers — `mx_await_result` (T103), `mx_find_agents` /
-`mx_describe_agent` (T104), and `mx_delegate_tool` (T105) — all backed by an
-injected daemon-call seam so `@mx-loom/toolbelt` stays a `devDependency`. The
-remaining handlers (`mx_run_command` T106, T107–T108), the MCP binding (T109), the
+`mx_describe_agent` (T104), `mx_delegate_tool` (T105), and `mx_run_command` (T106)
+— all backed by an injected daemon-call seam so `@mx-loom/toolbelt` stays a
+`devDependency`. The remaining handlers (T107–T108), the MCP binding (T109), the
 Claude shim (T110), and the JSON Schema → Zod converter (T111) all *read*
 descriptors and *build envelopes* from here.
 
@@ -335,6 +335,76 @@ const res = await mxDelegateTool(
 > availability are authored against the design's named shapes now and pinned behind
 > `MXL_CONFORMANCE_TWO_DAEMON=1`. A new daemon code degrades to `internal` (never
 > the wrong code), never throws.
+
+## The guarded-exec handler (T106)
+
+`mx_run_command` is the **second delegation verb** — the sibling of
+`mx_delegate_tool` that runs an *allowlisted command* on a remote agent (design §2
+"named tools **+** guarded exec"). It maps to the daemon RPC `exec.start` →
+`ExecRequest` and returns the same T102 envelope every other tool does.
+
+```ts
+import { mxRunCommand } from '@mx-loom/registry';
+import { createClient } from '@mx-loom/toolbelt';
+
+const deps = { daemon: createClient(), room: session.room }; // room from MxSession, NOT model input
+const res = await mxRunCommand(
+  { agent: 'agent_b', command: 'pytest', args: ['-q', 'tests/'], cwd: '/repo' },
+  deps,
+);
+//    ^ ToolResult — ok (sync), running / awaiting_approval (deferred), denied / error
+```
+
+- **Present-but-off; the guard is entirely receiver-side.** `mx_run_command` ships
+  in the registry, but its *presence confers no capability*. The handler performs
+  **no** `allow_commands` / `deny_args_regex` / `allow_cwd` / sandbox /
+  `requires_approval` check — all of that runs out-of-process on the receiving
+  daemon's deny-by-default `policy.toml` (design §6 layer 4, §9). "Disabled by
+  default → `policy_denied`" is an outcome the handler **surfaces cleanly**, never a
+  check it performs: a model that names the tool on a target whose operator never
+  allowlisted a command gets a clean `denied('policy_denied')` and keeps planning.
+  Re-implementing any guard locally would duplicate the authority surface
+  (forbidden) and falsely imply the toolbelt is the boundary (it is not).
+- **Three phases (+ optional inline wait).** Room provenance → `exec.start` with
+  idempotency → normalize the `ExecResponse`. It is the **leaner** sibling of T105:
+  there is **no inner-schema fetch and no args validation** — guarded exec has a
+  fixed input shape (`command` / `args` / `cwd`), forwarded verbatim for the
+  receiver to allowlist. A non-terminal result plus a positive `wait_ms` composes
+  `mx_await_result` (the same fast-feels-synchronous path as delegation).
+- **Reuses `callResponseToResult`.** The `ExecResponse` disposition vocabulary is
+  identical to `CallResponse` (sync success / `running` / `awaiting_approval` /
+  denial-fault terminal); only the success *payload* differs
+  (`{ exit_code, summary?, log_ref? }`). So an initial exec result and a later
+  `mx_await_result` poll agree by construction. High-risk commands carry
+  `requires_approval` on the receiver and surface as `awaiting_approval`.
+- **Non-zero exit is `status: ok`.** A command the receiver *allowed and ran* but
+  that exits non-zero (tests failed, a linter found issues) is a **successful
+  invocation** — `status: ok` with `result.exit_code !== 0`. The envelope status is
+  the *governance* outcome (was it allowlisted, did it run, was it approved), **not**
+  the command's own exit; `denied` / `error` are reserved for the daemon refusing or
+  failing to run the command at all. A binding/model reads `result.exit_code`.
+- **`ExecDeps` carry the session `room`, NO validator.** Unlike `DelegateDeps`,
+  guarded exec needs no JSON Schema validator (no dynamic inner schema). Both share
+  the `RoomScopedDeps` seam (`room` from `MxSession`, never model input; a missing
+  room fails fast as `internal`). The handler emits a *signed request* only.
+- **Idempotency + populated `audit_ref`** exactly as delegation: caller key or one
+  generated per invocation, placed in the `exec.start` params, never regenerated on
+  retry; correlation ids filled from the `ExecResponse` (null when omitted, never
+  fabricated). The secret boundary is the concrete `MxClient`
+  (`assertNoCredentialShapedArgs` over keys **and** values before dispatch — a
+  token-shaped arg surfaces as `invalid_args`; `redactSecrets` on the inbound
+  result), which the registry never re-implements. Exec args are the likeliest place
+  a model would try to inline a secret, so this matters more here than for
+  delegation.
+
+> **Staged at the two-daemon round-trip.** Unlike `call.start`, `exec.start` has
+> **no** existing conformance probe — its round-trip is not even staged. The
+> `exec.start` param names (`room`/`agent`/`command`/`args`/`cwd`/`idempotency_key`),
+> the `ExecResponse` disposition vocabulary, the success payload field names
+> (`exit_code`/`summary`/`log_ref`), the held-invocation `approval` fields, and the
+> `audit_ref` availability are authored against the design's named shapes now and
+> pinned behind `MXL_CONFORMANCE_TWO_DAEMON=1`. A new daemon code degrades to
+> `internal` (never the wrong code), never throws.
 
 ## Invariants
 

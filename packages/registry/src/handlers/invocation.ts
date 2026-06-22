@@ -294,6 +294,15 @@ export function invocationToResult(raw: unknown): ToolResult {
  * Map a raw `call.start` `CallResponse` onto a T102 {@link ToolResult} (T105 / #13)
  * — the sibling of {@link invocationToResult} for the **initial** delegation reply.
  *
+ * **Verb-agnostic — also normalizes an `exec.start` `ExecResponse`** (T106 / #14):
+ * the `ExecResponse` disposition vocabulary is identical (a synchronous success
+ * carrying a result object, a deferred `running` + handle, a held
+ * `awaiting_approval` + approval block, or a denial/fault terminal). Only the
+ * success *payload* differs — `{ exit_code, summary?, log_ref? }` for exec vs an
+ * inner tool's output for delegation — and the normalizer passes the success
+ * `result` through as an open object, so a non-zero `exit_code` still normalizes to
+ * `ok` (the governance outcome, not the command's exit, drives `status`).
+ *
  * It shares every reader/classifier with `invocationToResult` (the state-token
  * table, `failureCode`, `approvalOf`, `extractAuditRef`, …) so an initial
  * delegation result and a later `mx_await_result` poll on the same shape agree by

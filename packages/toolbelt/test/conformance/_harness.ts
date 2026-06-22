@@ -196,6 +196,19 @@ export interface TwoDaemonFixture {
   tool: string;
   /** Optional named tool B publishes but policy DENIES — the deny-by-default negative case. */
   deniedTool: string | undefined;
+  /**
+   * Optional allowlisted command B's policy permits (e.g. `echo`).
+   * Set via `MXL_CONFORMANCE_ALLOWED_COMMAND`. Required for the exec conformance
+   * allow-path (AC 2); tests that need it skip when absent.
+   */
+  allowedCommand: string | undefined;
+  /**
+   * Optional command that B's policy denies — either un-allowlisted (AC 1) or one
+   * whose args trip `deny_args_regex` (AC 3). A command that is simply absent from
+   * `allow_commands` is the safest default (no policy authoring needed beyond the
+   * empty/default `policy.toml`). Set via `MXL_CONFORMANCE_DENIED_COMMAND`.
+   */
+  deniedCommand: string | undefined;
 }
 
 /** Read the Tier 2 fixture coordinates from the env; `null` if any required field is absent. */
@@ -204,7 +217,14 @@ export function readTwoDaemonFixture(env: NodeJS.ProcessEnv = process.env): TwoD
   const targetAgentId = env['MXL_CONFORMANCE_TARGET_AGENT'];
   const tool = env['MXL_CONFORMANCE_TOOL'];
   if (!room || !targetAgentId || !tool) return null;
-  return { room, targetAgentId, tool, deniedTool: env['MXL_CONFORMANCE_DENIED_TOOL'] };
+  return {
+    room,
+    targetAgentId,
+    tool,
+    deniedTool: env['MXL_CONFORMANCE_DENIED_TOOL'],
+    allowedCommand: env['MXL_CONFORMANCE_ALLOWED_COMMAND'],
+    deniedCommand: env['MXL_CONFORMANCE_DENIED_COMMAND'],
+  };
 }
 
 // ---------------------------------------------------------------------------

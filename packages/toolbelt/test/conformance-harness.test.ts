@@ -205,6 +205,69 @@ describe('conformance harness — two-daemon fixture reader', () => {
     expect(fx).not.toBeNull();
     expect(fx!.deniedTool).toBeUndefined();
   });
+
+  // T106 exec fixture coordinates — pin the reader for the two fields the exec
+  // conformance suite (exec.conformance.test.ts) uses for its allow/deny paths.
+
+  it('allowedCommand is explicitly undefined when MXL_CONFORMANCE_ALLOWED_COMMAND is absent (T106)', () => {
+    const fx = readTwoDaemonFixture({
+      MXL_CONFORMANCE_ROOM: '!r:localhost',
+      MXL_CONFORMANCE_TARGET_AGENT: 'agent-b',
+      MXL_CONFORMANCE_TOOL: 'run_tests@1.0.0',
+    });
+    expect(fx).not.toBeNull();
+    expect(fx!.allowedCommand).toBeUndefined();
+  });
+
+  it('deniedCommand is explicitly undefined when MXL_CONFORMANCE_DENIED_COMMAND is absent (T106)', () => {
+    const fx = readTwoDaemonFixture({
+      MXL_CONFORMANCE_ROOM: '!r:localhost',
+      MXL_CONFORMANCE_TARGET_AGENT: 'agent-b',
+      MXL_CONFORMANCE_TOOL: 'run_tests@1.0.0',
+    });
+    expect(fx).not.toBeNull();
+    expect(fx!.deniedCommand).toBeUndefined();
+  });
+
+  it('allowedCommand is read from MXL_CONFORMANCE_ALLOWED_COMMAND (T106 exec allow-path)', () => {
+    const fx = readTwoDaemonFixture({
+      MXL_CONFORMANCE_ROOM: '!r:localhost',
+      MXL_CONFORMANCE_TARGET_AGENT: 'agent-b',
+      MXL_CONFORMANCE_TOOL: 'run_tests@1.0.0',
+      MXL_CONFORMANCE_ALLOWED_COMMAND: 'echo',
+    });
+    expect(fx).not.toBeNull();
+    expect(fx!.allowedCommand).toBe('echo');
+  });
+
+  it('deniedCommand is read from MXL_CONFORMANCE_DENIED_COMMAND (T106 exec deny-path)', () => {
+    const fx = readTwoDaemonFixture({
+      MXL_CONFORMANCE_ROOM: '!r:localhost',
+      MXL_CONFORMANCE_TARGET_AGENT: 'agent-b',
+      MXL_CONFORMANCE_TOOL: 'run_tests@1.0.0',
+      MXL_CONFORMANCE_DENIED_COMMAND: 'rm',
+    });
+    expect(fx).not.toBeNull();
+    expect(fx!.deniedCommand).toBe('rm');
+  });
+
+  it('all six fixture fields populated when all env vars present (T106 full exec fixture)', () => {
+    const fx = readTwoDaemonFixture({
+      MXL_CONFORMANCE_ROOM: '!r:localhost',
+      MXL_CONFORMANCE_TARGET_AGENT: 'agent-b',
+      MXL_CONFORMANCE_TOOL: 'run_tests@1.0.0',
+      MXL_CONFORMANCE_DENIED_TOOL: 'rm_rf@1.0.0',
+      MXL_CONFORMANCE_ALLOWED_COMMAND: 'echo',
+      MXL_CONFORMANCE_DENIED_COMMAND: 'rm',
+    });
+    expect(fx).not.toBeNull();
+    expect(fx!.room).toBe('!r:localhost');
+    expect(fx!.targetAgentId).toBe('agent-b');
+    expect(fx!.tool).toBe('run_tests@1.0.0');
+    expect(fx!.deniedTool).toBe('rm_rf@1.0.0');
+    expect(fx!.allowedCommand).toBe('echo');
+    expect(fx!.deniedCommand).toBe('rm');
+  });
 });
 
 describe('conformance harness — shared assertion vocabulary', () => {
@@ -299,6 +362,8 @@ describe('conformance harness — asserting helpers (assertSingleDaemonPrereqs /
     targetAgentId: 'agent-b',
     tool: 'run_tests@1.0.0',
     deniedTool: undefined,
+    allowedCommand: undefined,
+    deniedCommand: undefined,
   };
 
   // assertSingleDaemonPrereqs
