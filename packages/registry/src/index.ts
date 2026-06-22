@@ -72,3 +72,14 @@ export { ENVELOPE_SCHEMA, validateEnvelope } from './envelope-schema.js';
 
 // Client-supplied idempotency (AC 3) — the generator + the key prefix.
 export { newIdempotencyKey, IDEMPOTENCY_KEY_PREFIX } from './idempotency.js';
+
+// ---------------------------------------------------------------------------
+// The deferred-result protocol (T103 / #11) — design §4.3. The first handler.
+// ---------------------------------------------------------------------------
+
+// The `mx_await_result` resolver (handle → terminal-or-still-pending envelope via
+// `invocation.get` + `wait_ms` poll-with-timeout) and the pure invocation-state →
+// envelope normalizer. The daemon transport is injected through `HandlerDeps`
+// (imported `type`-only), so the registry keeps its zero runtime toolbelt dep.
+export { mxAwaitResult, classifyInvocation, invocationToResult } from './handlers/index.js';
+export type { AwaitResultInput, HandlerDeps, DaemonCall, InvocationDisposition } from './handlers/index.js';

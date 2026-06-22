@@ -4,7 +4,7 @@ Derived from [`mx-agent-tool-fabric-design.md`](./mx-agent-tool-fabric-design.md
 
 | | |
 |---|---|
-| Status | Active — M0 complete; M1 in progress — T101–T102 landed; GitHub issues live in `kortiene/mx-loom` |
+| Status | Active — M0 complete; M1 in progress — T101–T103 landed; GitHub issues live in `kortiene/mx-loom` |
 | Target repo | `kortiene/mx-loom` — this repo (branded `mx-loom`); a fresh repo, so issue numbering starts clean |
 | ID scheme | Local `T###` IDs for stable dependency refs; real GitHub numbers assigned at `gh issue create` time |
 | Estimate scale | T-shirt — **S** ≈ ½–1d · **M** ≈ 1–2d · **L** ≈ 3–5d |
@@ -196,10 +196,11 @@ M6                        ▼
 - **Scope:** `mx_await_result(handle, wait_ms)` over `invocation.get` (+ `task.watch` later); resolve `running`/`awaiting_approval` → terminal.
 - **Out of scope:** Native long-running shims (M2).
 - **Acceptance criteria:**
-  - [ ] A `running` handle resolves to a terminal envelope
-  - [ ] `awaiting_approval` resolves to `ok`/`denied` after an operator decision
-  - [ ] `wait_ms` timeout returns the still-pending status without error
-- **Dependencies:** blocked-by T102
+  - [x] A `running` handle resolves to a terminal envelope — `mxAwaitResult` probes `invocation.get`, classifies via the pure `invocationToResult` normalizer, and returns the terminal `ok`/`denied`/`error` envelope (`audit_ref` carried through).
+  - [x] `awaiting_approval` resolves to `ok`/`denied` after an operator decision — the resolver **only observes**: it polls until the daemon (which re-runs the authorize pipeline at release) surfaces the post-decision terminal state; it issues no approval and exposes no approve/deny/mutate surface.
+  - [x] `wait_ms` timeout returns the still-pending status without error — a `wait_ms` expiry returns the pending `running`/`awaiting_approval` envelope (`error: null`), **never** `errored('timeout')`; the `timeout` code is reserved for a genuine transport fault (the crux of T103).
+- **Dependencies:** blocked-by T102 · **unblocks T109** (MCP surfaces/resolves `awaiting_approval`), **T110** (Claude shim hides the poll loop), **T202** (ADK `LongRunningFunctionTool` resumes on result).
+- **Status:** Landed (`packages/registry/src/handlers/`: `deps.ts` the injected daemon-call seam `DaemonCall`/`HandlerDeps`, `invocation.ts` the pure state→envelope normalizer `classifyInvocation`/`invocationToResult`, `await-result.ts` the `mxAwaitResult` resolver + `wait_ms` poll-with-timeout; barrel-exported from `src/index.ts`). **Resolved decisions:** (#1) handler home = **extend `@mx-loom/registry`** (option A) — matches the `area/registry` label and keeps the zero **runtime** toolbelt dep via the `type`-only `MxTransport` import (the remit grows from "contract only" to "contract + handlers calling an injected daemon"); (#3) `wait_ms` = **client-side poll-with-timeout** baseline (server-side long-poll deferred until verified); (#6) `wait_ms` is a logical budget realised as many short reads with a bounded poll interval (~200 ms floor 10 ms / cap 2 s) so a large `wait_ms` cannot hammer the daemon — no upper cap enforced here (binding layer's call); (#7) terminal-failure disposition (`denied` vs `error`) follows the **mapped daemon code's** set membership, not the state label. **Pending the two-daemon round-trip** (`MXL_CONFORMANCE_TWO_DAEMON=1`): (#2) `invocation.get` method/param name, (#3) the invocation state vocabulary + whether `invocation.get` long-polls, (#4) the held-invocation `approval` fields, (#5) `audit_ref` field availability — authored against the design's named states with a safe `internal` fallback now, pinned at the round-trip.
 
 #### T104 · tool: `mx_find_agents` + `mx_describe_agent`
 `area/registry` `type/feature` `P0` · **S** · M1
