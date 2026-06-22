@@ -158,6 +158,78 @@ verbs do not). A handler:
   reuses `params` verbatim, so a key in `params` is stable across retries with no
   transport change. The key is a dedup nonce, **not** a credential or a capability.
 
+## The deferred-result protocol (T103)
+
+Remote calls and approvals are asynchronous (design §4.3 — "the one piece of
+semantics a runtime cannot skip"). A delegation (`mx_delegate_tool`) or a guarded
+command (`mx_run_command`) may return a **non-terminal** envelope — `running` or
+`awaiting_approval` plus a `handle` (`inv_…`). **`mx_await_result` is the one
+shared primitive that turns a handle into a terminal answer.**
+
+```ts
+import { mxAwaitResult } from '@mx-loom/registry';
+import { createClient } from '@mx-loom/toolbelt'; // the injected daemon-call seam
+
+const deps = { daemon: createClient() };          // any { call } satisfies DaemonCall
+const res = await mxAwaitResult({ handle: 'inv_01HZ…', wait_ms: 0 }, deps);
+//    ^ ToolResult — ok | denied | error (terminal), or running | awaiting_approval (still pending)
+```
+
+- **Lifecycle.** `running` → `ok` / `denied` / `error` once the work completes;
+  `awaiting_approval` → `ok` / `denied` once the operator decides **out-of-process**
+  and the **daemon re-runs the authorize pipeline at release** (design §5). The
+  resolver only **observes** state through a read RPC (`invocation.get`); it issues
+  no decision and exposes no approve/deny/mutate surface to the model.
+- **`wait_ms` semantics.** Omitted or `0` ⇒ a single, non-blocking probe. `> 0` ⇒
+  block up to `wait_ms` (a client-side poll loop with a bounded interval),
+  returning early on the first terminal state and otherwise the last pending state
+  at the deadline. `wait_ms` is a **logical resolution budget** realised as many
+  short reads — each probe uses the client's normal per-call transport timeout,
+  independent of `wait_ms` (it does not stretch a single socket read).
+- **Timeout is *not* an error (the crux).** A `wait_ms` expiry that finds the
+  invocation still pending returns the **pending** envelope (`running` /
+  `awaiting_approval`, `error: null`) — **never** `errored('timeout')`. The
+  `timeout` *code* is reserved for a genuine transport/daemon fault (a probe that
+  could not complete). A `wait_ms` expiry is a *successful poll that found the work
+  still in progress*.
+- **It is a read verb** — no `idempotency_key`; repeated polling of the same handle
+  is naturally safe (terminal states are stable).
+
+### The handler pattern (the precedent T104–T108 follow)
+
+`mx_await_result` is the **first** handler. Handlers live in `src/handlers/` and
+depend only on an **injected** daemon-call seam — they open no socket, read no env
+var, and import no concrete client:
+
+```ts
+import type { DaemonCall, HandlerDeps } from '@mx-loom/registry';
+
+type DaemonCall = Pick<MxTransport, 'call'>; // a structural subset of the transport
+interface HandlerDeps {
+  readonly daemon: DaemonCall;               // a concrete MxClient, or a test fake
+  readonly sleep?: (ms: number) => Promise<void>; // injected clock for the poll loop
+  readonly now?: () => number;
+  readonly pollIntervalMs?: number;
+}
+```
+
+Because `MxTransport` is an **interface**, the seam imports it `type`-only (erased
+under `verbatimModuleSyntax`) — so the registry keeps `@mx-loom/toolbelt` a
+**devDependency** and gains **no runtime dependency** on it, exactly as `errors.ts`
+imports `TransportErrorCode`. A concrete `MxClient` (which already enforces the
+deny-by-default env allowlist and inbound `redactSecrets`, T008) is injected by the
+caller. The pure `invocationToResult` / `classifyInvocation` normalizer maps a raw
+`invocation.get` response onto the T102 envelope — built **only** through the
+constructor helpers, so it conforms by construction, and **never throws** (an
+unrecognised state degrades to a safe `errored('internal', …)`).
+
+> **Staged at the two-daemon round-trip.** The exact `invocation.get` method/param
+> name, the invocation **state vocabulary** `classifyInvocation` keys on, the
+> held-invocation `approval` fields, and the `audit_ref` availability are authored
+> against the design's named states now and pinned to the verified v0.2.1 surface
+> behind `MXL_CONFORMANCE_TWO_DAEMON=1`. `task.watch` (push-based) replaces the
+> poll backend in T302 (M3) without changing this tool contract.
+
 ## Invariants
 
 - **No-authority (the headline security property).** The registry is the closed
