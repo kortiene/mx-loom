@@ -4,8 +4,8 @@
 
 | | |
 |---|---|
-| Status | Active — M0 complete (T001–T008 delivered); M1 started — T101 landed; see `docs/backlog.md` |
-| Date | 2026-06-18 |
+| Status | Active — M0 complete (T001–T008 delivered); M1 in progress — T101–T102 landed; see `docs/backlog.md` |
+| Date | 2026-06-22 |
 | Substrate pin | mx-agent `v0.2.1` (alpha) |
 | Closes | mx-agency #37 (SDK seam) |
 
@@ -143,11 +143,13 @@ Seven requirements; every runtime binding must honor them.
 }
 ```
 
+*(Implemented in T102 as `ToolResult` in `@mx-loom/registry` — the TypeScript types, a **draft-07 envelope JSON Schema** (validated with the same Ajv seam T101 ships), and constructor helpers (`ok`/`running`/`awaitingApproval`/`denied`/`errored`) that are the only sanctioned way to build an envelope, so a handler conforms by construction. The **status↔`error.code` partition** the JSONC above does not spell out is fixed: status `denied` carries a **denial-set** code (`policy_denied`, `untrusted_key`, `approval_denied`, `approval_expired`); status `error` carries a **fault-set** code (`timeout`, `not_found`, `invalid_args`, `target_offline`, `internal`); the two sets partition the closed nine-code taxonomy with no overlap. `audit_ref` is structurally always present, with `null` inner ids when the daemon does not yet return them (never fabricated). T102 is contract-only — the per-tool **construction** of envelopes is the handlers' job (T104–T108), and the deferred-result **resolution** of a `running`/`awaiting_approval` handle is T103.)*
+
 3. **Deferred-result protocol.** Remote calls and approvals are async. Long-running ops return `status: running|awaiting_approval` + a `handle`; the model (or the binding) resolves via `mx_await_result(handle, wait_ms)`. Runtimes with native long-running tools (ADK, Claude) hide the poll loop; others poll. This is the one piece of semantics a runtime cannot skip.
 
-4. **Idempotency.** Every mutating call carries a client-supplied `idempotency_key` (the daemon already uses `idempotency_key`/`nonce` for replay protection). Retried tool calls must not double-execute.
+4. **Idempotency.** Every mutating call carries a client-supplied `idempotency_key` (the daemon already uses `idempotency_key`/`nonce` for replay protection). Retried tool calls must not double-execute. *(Plumbed in T102 as the descriptor field + handler contract: the **mutating** verbs `mx_delegate_tool` / `mx_run_command` declare an optional `idempotency_key` in their `input_schema` (read verbs do not); `newIdempotencyKey()` generates one (`idk_<uuid>`) when the caller omits it; the mutating handlers (T105/T106) attach it to the outbound `call.start`/`exec.start` params and reuse the **same** key on every transport-level retry — `MxClient.withRetry` reuses params verbatim, so no transport change is needed and the daemon's replay protection dedupes. The key is a dedup nonce, not a capability; idempotency never bypasses authorize. The exact wire param name is confirmed at the two-daemon round-trip.)*
 
-5. **Stable error taxonomy.** The closed `error.code` set above — so a runtime can react programmatically (e.g., `untrusted_key` → surface an onboarding hint; `awaiting_approval` → keep planning).
+5. **Stable error taxonomy.** The closed `error.code` set above — so a runtime can react programmatically (e.g., `untrusted_key` → surface an onboarding hint; `awaiting_approval` → keep planning). *(Implemented in T102 as the single-source `ERROR_CODES` const → the `ErrorCode` type → the envelope schema's `enum`, with `mapTransportError`/`mapDaemonError` translating every transport/daemon fault onto the closed set in one place.)*
 
 6. **Audit correlation on every result.** `audit_ref` ties the model's action to the signed Matrix event(s).
 
@@ -220,7 +222,7 @@ Keep a clean line between **ephemeral cognition state (runtime)** and **durable 
 
 - **Task state.** The DAG (`com.mxagent.task.v1`) is the durable, shared plan — `proposed→pending→assigned→executing→succeeded/failed`, with `depends_on`/`blocks` and signed `action`. The runtime owns how to think about the plan; MX owns the plan of record. This is also the crash-recovery boundary: a runtime can die and a new one resumes from task state.
 
-- **Sessions.** Define `MxSession = { agent_id, room/workspace, daemon socket, correlation_id }`. A runtime conversation maps 1:1 to an MX agent registration. The toolbelt holds the session handle and threads `correlation_id` onto every call so a cognitive session is reconstructable across delegations. Registration (`agent.register`) happens once at session start; heartbeats keep liveness. *(Implemented in T005: `openSession()` in `packages/toolbelt` is the session entry point — registration is toolbelt-run lifecycle, not a model tool, and `correlation_id` is stamped on every outbound call. Stamping into the signed Matrix events — so it survives across delegations — is gated on daemon support and off by default until verified. The `audit_ref` the id ultimately lands in is the M1 envelope, T102, not yet built.)*
+- **Sessions.** Define `MxSession = { agent_id, room/workspace, daemon socket, correlation_id }`. A runtime conversation maps 1:1 to an MX agent registration. The toolbelt holds the session handle and threads `correlation_id` onto every call so a cognitive session is reconstructable across delegations. Registration (`agent.register`) happens once at session start; heartbeats keep liveness. *(Implemented in T005: `openSession()` in `packages/toolbelt` is the session entry point — registration is toolbelt-run lifecycle, not a model tool, and `correlation_id` is stamped on every outbound call. Stamping into the signed Matrix events — so it survives across delegations — is gated on daemon support and off by default until verified. The `audit_ref` the id lands in is the M1 envelope delivered by T102.)*
 
 - **Audit.** The signed Matrix event stream is the audit log — immutable, room-scoped, Ed25519-signed, replay-protected. Every tool result carries `audit_ref`, so the app layer can correlate "model decided X" ↔ "daemon executed Y" ↔ "operator approved Z." Mirror these into mx-agency's existing audit store (ADR-07/ADR-10, Postgres + RLS) for queryable, tenant-scoped history. Two-tier audit: substrate = tamper-evident truth, app store = queryable index.
 

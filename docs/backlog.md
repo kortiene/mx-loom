@@ -4,7 +4,7 @@ Derived from [`mx-agent-tool-fabric-design.md`](./mx-agent-tool-fabric-design.md
 
 | | |
 |---|---|
-| Status | Active — M0 complete; M1 in progress — T101 landed; GitHub issues live in `kortiene/mx-loom` |
+| Status | Active — M0 complete; M1 in progress — T101–T102 landed; GitHub issues live in `kortiene/mx-loom` |
 | Target repo | `kortiene/mx-loom` — this repo (branded `mx-loom`); a fresh repo, so issue numbering starts clean |
 | ID scheme | Local `T###` IDs for stable dependency refs; real GitHub numbers assigned at `gh issue create` time |
 | Estimate scale | T-shirt — **S** ≈ ½–1d · **M** ≈ 1–2d · **L** ≈ 3–5d |
@@ -184,10 +184,11 @@ M6                        ▼
 - **Scope:** `{status, result, error, handle, approval, audit_ref}`; closed `error.code` set (`policy_denied|untrusted_key|approval_denied|approval_expired|timeout|not_found|invalid_args|target_offline|internal`); client-supplied `idempotency_key` plumbing.
 - **Out of scope:** Async resolution (T103).
 - **Acceptance criteria:**
-  - [ ] Every tool result conforms to the envelope schema
-  - [ ] Error codes are closed-set and tested
-  - [ ] Retried call with same `idempotency_key` does not double-execute
-- **Dependencies:** blocked-by T101
+  - [x] Every tool result conforms to the envelope schema — `ToolResult` + the draft-07 `ENVELOPE_SCHEMA`/`validateEnvelope` (status-discriminated union, compiled via the T101 Ajv seam) + constructor helpers (`ok`/`running`/`awaitingApproval`/`denied`/`errored`) that are the only sanctioned builder, so handlers conform by construction. (The literal per-tool assertion is exercised by the handler tests T104–T108 + the golden test T114, since the handlers do not exist yet.)
+  - [x] Error codes are closed-set and tested — single-source `ERROR_CODES` (the nine documented codes) → `ErrorCode`/`isErrorCode`, the `DENIAL_CODES`/`FAULT_CODES` partition, and the exhaustive `mapTransportError` (`never`-default) / `mapDaemonError` (`internal` fallback) mappers. (The closed-set regression + exhaustive-mapper suites land in the dedicated tests phase.)
+  - [x] Retried call with same `idempotency_key` does not double-execute — plumbed as the optional `idempotency_key` field on the mutating descriptors (`mx_delegate_tool`/`mx_run_command`) + `newIdempotencyKey()`; the handler contract reuses the same key on transport-level retries (params reused verbatim by `MxClient.withRetry`) so the daemon dedupes. (Live dedup rides the staged two-daemon conformance fixture.)
+- **Dependencies:** blocked-by T101 · **unblocks T103** (deferred-result), **T105/T106** (handlers build envelopes via the helpers + mappers + idempotency contract), **T107/T108**, **T113** (reads `audit_ref`), **T114** (golden test).
+- **Status:** Landed (`packages/registry`: `src/envelope.ts`, `src/errors.ts`, `src/envelope-schema.ts`, `src/idempotency.ts`; `idempotency_key` added to the two mutating descriptors; surface exported from `src/index.ts`). **Resolved decisions:** (#1) envelope home = **extend `@mx-loom/registry`**; (#2) status↔code partition = denial-set `{policy_denied, untrusted_key, approval_denied, approval_expired}` / fault-set `{timeout, not_found, invalid_args, target_offline, internal}`; (#7) idempotency in handler-built params (not `CallOptions`), failover stays conservative `not_running`-only; (#8) transport-code coupling = **type-only import** (no runtime dep on the toolbelt). **Pending the two-daemon round-trip** (#3 daemon error vocabulary, #4 `audit_ref` field availability, #5 `idempotency_key`/`nonce` wire param name) — authored against the design's named codes now, pinned by the conformance fixture later.
 
 #### T103 · registry: deferred-result protocol (`mx_await_result`)
 `area/registry` `type/feature` `P0` · **M** · M1

@@ -1,8 +1,12 @@
-// The canonical tool registry (T101 / #9) — the single, enumerable, validated,
-// secret-free source of `mx_*` tool descriptors every binding (MCP T109, Claude
-// shim T110), the JSON Schema → Zod converter (T111), and the discovery/
-// delegation handlers (T104–T108) read from. Descriptors only — no behavior, no
-// daemon calls, no result envelope (those are T102/T104–T108).
+// The canonical tool registry (T101 / #9) + the normalized result contract
+// (T102 / #10). The descriptor set is the single, enumerable, validated,
+// secret-free source of `mx_*` tools every binding (MCP T109, Claude shim T110),
+// the JSON Schema → Zod converter (T111), and the discovery/delegation handlers
+// (T104–T108) read from. T102 adds the one result **envelope** (`{status, result,
+// error, handle, approval, audit_ref}`), the closed `error.code` taxonomy +
+// fault→envelope mappers, and the client-supplied `idempotency_key` contract —
+// the contract layer the handlers (T104–T108) build envelopes with. Still no
+// behavior and no daemon calls here.
 
 // The descriptor model.
 export { TOOL_NAME_RE, defineDescriptor } from './descriptor.js';
@@ -41,3 +45,30 @@ export {
 
 // Immutability helper (used to freeze authored descriptors).
 export { deepFreeze } from './freeze.js';
+
+// ---------------------------------------------------------------------------
+// The normalized result contract (T102 / #10) — design §4.2/§4.4/§4.5/§4.6.
+// ---------------------------------------------------------------------------
+
+// The result envelope — the single shape every tool returns — and its
+// constructor helpers (the only sanctioned way to build a conforming envelope).
+export { ok, running, awaitingApproval, denied, errored } from './envelope.js';
+export type { ToolResult, ToolStatus, ToolError, ApprovalInfo, AuditRef } from './envelope.js';
+
+// The closed `error.code` taxonomy, the denied/error status partition, the
+// runtime guard, and the fault→envelope mappers.
+export {
+  ERROR_CODES,
+  DENIAL_CODES,
+  FAULT_CODES,
+  isErrorCode,
+  mapTransportError,
+  mapDaemonError,
+} from './errors.js';
+export type { ErrorCode, DenialCode, FaultCode } from './errors.js';
+
+// The draft-07 envelope schema + ready-to-use validator (AC 1).
+export { ENVELOPE_SCHEMA, validateEnvelope } from './envelope-schema.js';
+
+// Client-supplied idempotency (AC 3) — the generator + the key prefix.
+export { newIdempotencyKey, IDEMPOTENCY_KEY_PREFIX } from './idempotency.js';
