@@ -98,6 +98,12 @@ same base64 SHA-256 digest (`mxagent-ed25519:<x>` and `SHA256:<x>`).
   `$TMPDIR/mx-agent/daemon.sock` (macOS) / `$XDG_RUNTIME_DIR/mx-agent/daemon.sock`, framed JSON-RPC 2.0.
 - `agent.register` / `agent.list` / `agent.tools` are ready to back `mx_find_agents` /
   `mx_describe_agent` (T104) and the `input_schema` pass-through of `mx_delegate_tool` (T105).
+  **`agent.show` was NOT confirmed on v0.2.1** — it is absent from the verified-methods table
+  above (design §2 maps `mx_describe_agent` → `agent.show` + `agent.tools`, but the live spike did
+  not exercise `agent.show`). T104 therefore backs `mx_describe_agent` on the **verified**
+  `agent.list` + `agent.tools` only: `agent.tools` supplies the published `schemas[]`, `agent.list`
+  the liveness/workspace/load metadata. An `agent.show {agent_id}` fast-path is gated off behind a
+  wire const in the handler; **flip it on (and update this note) if a future pin verifies `agent.show`.**
 - The conformance suite (T007 / #7) is built (`packages/toolbelt/test/conformance/`,
   `.github/workflows/conformance.yml`): Tier 0/1 (`agent.register` / `agent.list` + error taxonomy)
   are **green on v0.2.1**; full delegation (`call.start`, Tier 2) is staged behind the **two-daemon

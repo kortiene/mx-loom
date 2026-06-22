@@ -74,7 +74,7 @@ export { ENVELOPE_SCHEMA, validateEnvelope } from './envelope-schema.js';
 export { newIdempotencyKey, IDEMPOTENCY_KEY_PREFIX } from './idempotency.js';
 
 // ---------------------------------------------------------------------------
-// The deferred-result protocol (T103 / #11) — design §4.3. The first handler.
+// The T103 (deferred-result) + T104 (discovery) handlers — design §4.3 / §2.
 // ---------------------------------------------------------------------------
 
 // The `mx_await_result` resolver (handle → terminal-or-still-pending envelope via
@@ -83,3 +83,18 @@ export { newIdempotencyKey, IDEMPOTENCY_KEY_PREFIX } from './idempotency.js';
 // (imported `type`-only), so the registry keeps its zero runtime toolbelt dep.
 export { mxAwaitResult, classifyInvocation, invocationToResult } from './handlers/index.js';
 export type { AwaitResultInput, HandlerDeps, DaemonCall, InvocationDisposition } from './handlers/index.js';
+
+// The discovery handlers (T104): `mx_find_agents` (agent.list → filter → project)
+// and `mx_describe_agent` (agent.tools + agent.list → project the ToolSchema[]).
+// Both are `sync` local reads — they resolve to a terminal `ok`/`denied`/`error`
+// envelope with an all-null `audit_ref` — plus the pure non-secret projectors.
+export { mxFindAgents, mxDescribeAgent, projectAgentSummary, projectAgentDetail, projectTools } from './handlers/index.js';
+export type {
+  FindAgentsInput,
+  DescribeAgentInput,
+  DescribeAgentResult,
+  AgentSummary,
+  AgentDetail,
+  PublishedTool,
+  AgentLiveness,
+} from './handlers/index.js';

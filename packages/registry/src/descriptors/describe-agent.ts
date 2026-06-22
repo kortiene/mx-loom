@@ -3,7 +3,11 @@ import { JSON_SCHEMA_DIALECT } from '../validator.js';
 
 /**
  * `mx_describe_agent` — inspect one agent and the `ToolSchema[]` it publishes.
- * Backed by `agent.show` + `agent.tools` in T104. `sync`.
+ * Backed by `agent.list` + `agent.tools` in T104 (the **verified** v0.2.1
+ * surface). `agent.show` is *not* in the verified surface table
+ * (`docs/mx-agent-surface-v0.2.1.md`), so the handler defaults to
+ * `agent.list` + `agent.tools` and treats `agent.show` as an optional fast-path
+ * to enable once a future pin verifies it. `sync`.
  *
  * The output models the model-relevant, non-secret subset of the agent record;
  * the handler (T104) may surface the full `AgentState` (additionalProperties is

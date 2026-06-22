@@ -105,9 +105,24 @@ describe('mx_find_agents descriptor', () => {
     expect(schema.additionalProperties).toBe(false);
   });
 
-  it('output_schema describes an array of agent summaries', () => {
-    const out = MX_FIND_AGENTS.output_schema as { type: string };
-    expect(out.type).toBe('array');
+  it('liveness enum is exactly ["active", "stale", "offline"] (no unknown values)', () => {
+    const liveProp = (schema.properties as Record<string, { enum?: string[] }>).liveness;
+    expect(liveProp?.enum).toEqual(['active', 'stale', 'offline']);
+  });
+
+  it('output_schema wraps the agent summaries in an { agents: [...] } object', () => {
+    // T104 wraps the matches in an object (not a bare top-level array) so the
+    // success payload satisfies the T102 envelope `ok` branch (`result` must be an
+    // object). The array of summaries lives under `agents`.
+    const out = MX_FIND_AGENTS.output_schema as {
+      type: string;
+      required?: string[];
+      properties: { agents: { type: string; items: { type: string } } };
+    };
+    expect(out.type).toBe('object');
+    expect(out.required ?? []).toContain('agents');
+    expect(out.properties.agents.type).toBe('array');
+    expect(out.properties.agents.items.type).toBe('object');
   });
 });
 

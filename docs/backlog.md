@@ -4,7 +4,7 @@ Derived from [`mx-agent-tool-fabric-design.md`](./mx-agent-tool-fabric-design.md
 
 | | |
 |---|---|
-| Status | Active — M0 complete; M1 in progress — T101–T103 landed; GitHub issues live in `kortiene/mx-loom` |
+| Status | Active — M0 complete; M1 in progress — T101–T104 landed; GitHub issues live in `kortiene/mx-loom` |
 | Target repo | `kortiene/mx-loom` — this repo (branded `mx-loom`); a fresh repo, so issue numbering starts clean |
 | ID scheme | Local `T###` IDs for stable dependency refs; real GitHub numbers assigned at `gh issue create` time |
 | Estimate scale | T-shirt — **S** ≈ ½–1d · **M** ≈ 1–2d · **L** ≈ 3–5d |
@@ -208,9 +208,10 @@ M6                        ▼
 - **Scope:** Capability/tool/liveness filtering; return published `ToolSchema[]` for an agent.
 - **Out of scope:** Trust mutation (operator-only).
 - **Acceptance criteria:**
-  - [ ] Filter by capability returns expected agents
-  - [ ] `mx_describe_agent` returns the target's tool schemas
+  - [x] Filter by capability returns expected agents — `mxFindAgents` calls `agent.list` once, applies the `capability`/`tool`/`liveness` filters client-side with **AND** semantics (absent filter ⇒ matches all), projects each survivor onto a non-secret `AgentSummary`, and returns `ok({ agents }, EMPTY_AUDIT_REF)`.
+  - [x] `mx_describe_agent` returns the target's tool schemas — `mxDescribeAgent` resolves `agent.tools` (the published `schemas: ToolSchema[]`, `input_schema`/`output_schema` passed through verbatim) + `agent.list` (liveness/workspace/load) and returns `ok({ agent, tools }, EMPTY_AUDIT_REF)`; an unknown `agent_id` maps to `not_found`.
 - **Dependencies:** blocked-by T101
+- **Status:** Landed (`packages/registry/src/handlers/`: `agent-projection.ts` the pure non-secret `AgentState`→`AgentSummary`/`AgentDetail` + `ToolSchema`→`PublishedTool` projectors, `find-agents.ts` `mxFindAgents`, `describe-agent.ts` `mxDescribeAgent`, `handler-fault.ts` the shared `faultToResult` + `EMPTY_AUDIT_REF` extracted from `await-result.ts`; barrel-exported from `src/index.ts`). Both verbs are `sync` **local reads** — terminal `ok`/`denied`/`error` envelopes with an **all-null** `audit_ref` (no Matrix round-trip), built only through the T102 helpers, **never throwing** (transport/daemon faults map onto the closed taxonomy via the shared `faultToResult`, e.g. `unknown_agent` → `not_found`). **Resolved decisions:** (#1) the `mx_find_agents` `output_schema` array→object reconciliation — the success payload is `{ agents: AgentSummary[] }` (a bare array fails the envelope `ok` branch's `result: {type:'object'}`); the descriptor was updated, the envelope contract left untouched. (#4) filtering is **client-side** over the verified surface (no server-side filter param). (#5) the output is **projected** to a non-secret subset (drops `matrix_user_id`/`device_id`/`signing_key_id`/`signing_public_key`/`state_rev`), allowlist-by-construction. (#6) a missing/unknown liveness fails **closed** to `offline`. (#7) the shared fault path was **extracted** to `handler-fault.ts` (now reused by 3 handlers). **Pending the live check:** (#2) `agent.show` is **not** in the verified v0.2.1 surface, so `mx_describe_agent` is backed by `agent.list` + `agent.tools`; an `agent.show {agent_id}` fast-path is gated off pending a pin that verifies it. (#3) whether the `agent.list` row's `tools[]` carries tool *names* is unverified — the `tool` filter reads names from the row when it carries them and otherwise resolves `agent.tools` for the (capability+liveness) survivors only (bounded fan-out, per-agent fault tolerated as "no match"). The comprehensive handler/projection/security/conformance test suite (the spec's Testing Plan) lands in the dedicated tests phase.
 
 #### T105 · tool: `mx_delegate_tool` (primary delegation verb)
 `area/registry` `type/feature` `P0` · **M** · M1
