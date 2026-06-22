@@ -10,11 +10,12 @@ secret-free set of `mx_*` tool descriptors plus a fail-fast loader/validator.
 It now ships **three layers**: the descriptor model and registry loader/validator
 (T101), the normalized result-envelope + error taxonomy + idempotency contract
 (T102), and the handlers — `mx_await_result` (T103), `mx_find_agents` /
-`mx_describe_agent` (T104), `mx_delegate_tool` (T105), and `mx_run_command` (T106)
-— all backed by an injected daemon-call seam so `@mx-loom/toolbelt` stays a
-`devDependency`. The remaining handlers (T107–T108), the MCP binding (T109), the
-Claude shim (T110), and the JSON Schema → Zod converter (T111) all *read*
-descriptors and *build envelopes* from here.
+`mx_describe_agent` (T104), `mx_delegate_tool` (T105), `mx_run_command` (T106), and
+`mx_share_context` / `mx_get_context` (T107) — all backed by an injected
+daemon-call seam so `@mx-loom/toolbelt` stays a `devDependency`. The remaining
+handlers (T108), the MCP binding (T109), the Claude shim (T110), and the JSON
+Schema → Zod converter (T111) all *read* descriptors and *build envelopes* from
+here.
 
 ## The descriptor model
 
@@ -405,6 +406,79 @@ const res = await mxRunCommand(
 > `audit_ref` availability are authored against the design's named shapes now and
 > pinned behind `MXL_CONFORMANCE_TWO_DAEMON=1`. A new daemon code degrades to
 > `internal` (never the wrong code), never throws.
+
+## The context-sharing handlers (T107)
+
+`mx_share_context` + `mx_get_context` are the **publish/fetch seam** for the
+substrate's cross-agent context channel (design §2 / §7). Design §7 draws the line:
+*private agent memory* (scratchpad, conversation, retrieved knowledge) stays in the
+runtime — MX-Agent never touches it; *shared, cross-agent context* (a diff, a file,
+an env snapshot one agent produces and another needs to read) moves through these
+two verbs as `com.mxagent.context.share.v1`. **Rule: if another agent needs to see
+it, it's an MX share; if only this agent's reasoning needs it, it's runtime memory.**
+
+```ts
+import { mxShareContext, mxGetContext } from '@mx-loom/registry';
+import { createClient } from '@mx-loom/toolbelt';
+
+const deps = { daemon: createClient(), room: session.room }; // room from MxSession, NOT model input
+const shared = await mxShareContext({ kind: 'diff', content: theDiff, encoding: 'utf-8' }, deps);
+//    ^ ok({ context_id, sha256 }, audit_ref) — the publish is a Matrix round-trip
+const got = await mxGetContext({ context_id: shared.result.context_id }, deps);
+//    ^ ok({ context_id, kind?, sha256?, size_bytes?, inline? | media_mxc? }, audit_ref)
+```
+
+- **Two `sync` verbs.** Both resolve directly to a terminal `ok` / `denied` /
+  `error` envelope — never `running` / `awaiting_approval`, never composing
+  `mx_await_result`. `mx_share_context` maps `kind` ∈ `{file, diff, env}` to the
+  daemon RPC `share.file` / `share.diff` / `share.env`; `mx_get_context` maps
+  `context_id` to `share.get`. Both use the `RoomScopedDeps` seam (`room` from
+  `MxSession`, **never** model input; a missing room fails fast as `internal`).
+- **Inline-vs-media + sha256 is *substrate* behavior the handler surfaces, never
+  reimplements.** The ≤256 KiB inline threshold, the Matrix-media upload/download,
+  the content-addressing, and the authoritative sha256 over the *stored* bytes all
+  live on the receiving daemon (which holds the Matrix credentials mx-loom never has
+  — Boundary A). The handler forwards `content` verbatim and passes the daemon's
+  `context_id` / `sha256` and the `inline` vs `media_mxc` discriminator through. It
+  performs **no** client-side threshold check, **no** media chunking, **no** sha256
+  computation, and **downloads no Matrix media** — the only boundary-respecting
+  design for AC 2's "sha256 verification" (the daemon fetches and verifies media; the
+  handler trusts and surfaces the digest + path indicator).
+- **The single most dangerous exfiltration surface, doubly bounded.** A model that
+  wanted to leak a credential would reach for "share this content." No field carries
+  a credential: the concrete `MxClient.call` runs `assertNoCredentialShapedArgs` over
+  keys **and** values *before dispatch*, so a `content`/`path` carrying a token-shaped
+  value (`ghp_…`, `sk-ant-…`, a PEM header, a `Bearer …` secret, `GH_TOKEN`) is
+  **rejected as `invalid_args` rather than published** — you cannot exfiltrate a
+  credential-shaped secret by sharing it. `kind: 'env'` is the highest-risk artifact
+  but is doubly bounded: the daemon's secrets never cross Boundary A, so a
+  model-assembled env snapshot cannot contain them by construction. On fetch,
+  inbound `redactSecrets` scrubs any token-shaped value in returned `inline` content
+  before it reaches the model. The registry re-implements neither guard.
+- **`audit_ref` split.** `mx_share_context` publishes a `com.mxagent.context.share.v1`
+  event → a Matrix round-trip → **populated** `audit_ref` (`event_id` / `room`, null
+  inner ids when the daemon omits them, never fabricated). `mx_get_context` extracts
+  ids if the daemon surfaces them (a media-fetching round-trip), else all-null
+  (`EMPTY_AUDIT_REF`, a local read).
+- **Authority stays out-of-process; never an authority verb.** Neither handler
+  performs a trust/policy/sandbox check. The receiving daemon's `policy.toml` decides
+  whether a share/fetch is permitted; `policy_denied` / `untrusted_key` are outcomes
+  the handlers *map*, never decisions they make. An unknown `context_id` maps to
+  `not_found`. Both stay in `MODEL_FACING_ALLOWLIST`; neither is in
+  `FORBIDDEN_AUTHORITY_VERBS`.
+
+> **Staged at the two-daemon round-trip.** `share.*` is the *least*-verified surface
+> in the design-§2 table — "◻️ documented", not even flag-confirmed, with no existing
+> conformance probe. The `share.file/diff/env` and `share.get` param names
+> (`room`/`path`/`content`/`encoding`; `context_id`/`room`), the success field names
+> (`context_id`/`sha256`/`inline`/`media_mxc`/`size_bytes`), whether share publishes a
+> Matrix event (populated `audit_ref`) and whether `share.get` is a local read or a
+> media round-trip, the unknown-context daemon code spelling, and whether the daemon
+> content-addresses a re-share are authored against the design's named shapes now
+> (localized method consts + `internal`/`not_found`-safe fallbacks) and pinned behind
+> `MXL_CONFORMANCE_TWO_DAEMON=1`. A new daemon code degrades to `internal`/`not_found`
+> (never the wrong code), never throws. Content-addressing makes a re-share naturally
+> idempotent, so no `idempotency_key` is added for M1.
 
 ## Invariants
 

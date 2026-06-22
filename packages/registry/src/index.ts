@@ -120,3 +120,18 @@ export type { DelegateToolInput, DelegateDeps } from './handlers/index.js';
 // `result.exit_code !== 0` (governance outcome, not the command's exit).
 export { mxRunCommand } from './handlers/index.js';
 export type { RunCommandInput, ExecDeps, RoomScopedDeps } from './handlers/index.js';
+
+// The context-sharing handlers (T107): `mx_share_context` + `mx_get_context` — the
+// publish/fetch seam for the substrate's cross-agent context channel (a diff, a
+// file, an env snapshot one agent produces and another needs to read), mapping to
+// the daemon `share.file/diff/env` (publish) and `share.get` (fetch). Both `sync`,
+// both `RoomScopedDeps` (no validator). The inline (≤256 KiB) vs Matrix-media split,
+// the content-addressing, and the authoritative sha256 over stored bytes are
+// *substrate* behavior the handlers surface (via `context_id` / `sha256` / the
+// `inline` vs `media_mxc` discriminator) and never reimplement — mx-loom holds no
+// Matrix credentials and downloads no media (Boundary A). `mx_share_context` is the
+// single most dangerous exfiltration surface and is doubly bounded: the concrete
+// `MxClient.call` rejects credential-shaped `content`/`path` as `invalid_args`
+// before dispatch. `contextResponseToResult` is the shared flat-payload classifier.
+export { mxShareContext, mxGetContext, contextResponseToResult } from './handlers/index.js';
+export type { ShareContextInput, GetContextInput } from './handlers/index.js';

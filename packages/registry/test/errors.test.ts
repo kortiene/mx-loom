@@ -427,4 +427,33 @@ describe('mapDaemonError — daemon code mapping', () => {
     // yield internal; a string daemon code in `data` is still extractable separately.
     expect(mapDaemonError({ code: -32600, message: 'err' })).toBe('internal');
   });
+
+  // T107 (mx_get_context) — unknown shared-context id aliases (Risks #6).
+  // These are added to DAEMON_CODE_TO_ERROR so an unknown `context_id` maps to
+  // `not_found`, consistent with `unknown_agent` / `unknown_tool` /
+  // `no_such_invocation`. The exact daemon spelling is pending the round-trip;
+  // the three aliases cover the most likely variants.
+  it('maps "unknown_context" → not_found (T107 context-id alias)', () => {
+    expect(mapDaemonError('unknown_context')).toBe('not_found');
+  });
+
+  it('maps "no_such_context" → not_found (T107 context-id alias)', () => {
+    expect(mapDaemonError('no_such_context')).toBe('not_found');
+  });
+
+  it('maps "context_not_found" → not_found (T107 context-id alias)', () => {
+    expect(mapDaemonError('context_not_found')).toBe('not_found');
+  });
+
+  it('maps "UNKNOWN_CONTEXT" (uppercase) → not_found via normalisation', () => {
+    expect(mapDaemonError('UNKNOWN_CONTEXT')).toBe('not_found');
+  });
+
+  it('maps "unknown.context" (dot separator) → not_found via normalisation', () => {
+    expect(mapDaemonError('unknown.context')).toBe('not_found');
+  });
+
+  it('maps "context_not_found" from a nested {error:{code}} shape → not_found', () => {
+    expect(mapDaemonError({ error: { code: 'context_not_found' } })).toBe('not_found');
+  });
 });
