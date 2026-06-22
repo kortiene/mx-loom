@@ -1,9 +1,14 @@
 import { connect, type Socket } from 'node:net';
 
+import type { CallOptions, MxTransport } from '../transport.js';
 import { IpcError } from './errors.js';
 import { encodeFrame, FrameDecoder } from './framing.js';
 import { resolveSocketPath } from './socket-path.js';
 import type { DaemonStatus, JsonRpcResponse } from './types.js';
+
+// `CallOptions` is canonically defined in `../transport.ts` (shared by both
+// transports); re-exported here so existing `./ipc/client.js` imports keep working.
+export type { CallOptions } from '../transport.js';
 
 export interface IpcClientOptions {
   /** Explicit socket path; otherwise resolved from the environment. */
@@ -12,11 +17,6 @@ export interface IpcClientOptions {
   env?: NodeJS.ProcessEnv;
   /** Default per-call timeout in ms. Default: 30_000. */
   defaultTimeoutMs?: number;
-}
-
-export interface CallOptions {
-  /** Per-call timeout in ms, overriding the client default. */
-  timeoutMs?: number;
 }
 
 interface Pending {
@@ -36,9 +36,11 @@ function nextId(): string {
  * (Boundary B). One persistent connection multiplexes concurrent calls,
  * correlated by request id; the connection is established lazily on first call.
  *
- * Scope (T002): transport only — no tool registry, no CLI fallback (T003).
+ * Scope (T002): transport only — no tool registry. The CLI fallback (T003)
+ * is a standalone sibling; both satisfy {@link MxTransport} so T004 can hold
+ * either behind one type.
  */
-export class IpcClient {
+export class IpcClient implements MxTransport {
   readonly socketPath: string;
   readonly #defaultTimeoutMs: number;
   #socket: Socket | null = null;

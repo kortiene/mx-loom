@@ -100,9 +100,9 @@ M6                        ▼
 - **Scope:** Subprocess invocation with `safeSubprocessEnv` allowlist; parse `--json` stdout; normalize errors to match IPC client.
 - **Out of scope:** Transport selection logic (T004).
 - **Acceptance criteria:**
-  - [ ] A CLI-backed call returns the same typed result shape as the IPC client
-  - [ ] Subprocess env is allowlisted (no `MATRIX_*` / `MX_AGENT_*` leak)
-- **Dependencies:** blocked-by T001
+  - [x] A CLI-backed call returns the same typed result shape as the IPC client (`CliClient` + `IpcClient` both satisfy `MxTransport`; `status()` → `DaemonStatus`)
+  - [x] Subprocess env is allowlisted (no `MATRIX_*` / `MX_AGENT_*` leak) — toolbelt-local deny-by-default `safeSubprocessEnv`
+- **Dependencies:** blocked-by T001 · **unblocks T004** (transport selection)
 
 #### T004 · toolbelt: unified client behind the `app/src/sdk` seam (closes #37)
 `area/toolbelt` `type/feature` `P0` · **M** · M0

@@ -48,6 +48,35 @@ Observed for `run_tests@1.0.0` exactly as the design-doc example: input `{packag
 | `task.create/update/list/graph` | ◻️ flags confirmed | `task create --room --title [--tool --arg/--input-json --exec --depends-on --blocks --assign --state]` — matches the DAG + signed-action model |
 | `share.file/diff/env` · `approval.decide` · `invocation.*` | ◻️ documented | exercise in the conformance suite (T007 / #7) with a two-daemon fixture |
 
+## CLI `--json` fallback transport (T003 / #3)
+
+The toolbelt's secondary transport (ADR-11) is a one-shot `mx-agent <noun> <verb> --json` CLI
+invocation, implemented in `packages/toolbelt/src/cli/` as `CliClient` (a standalone sibling of
+`IpcClient`; transport *selection* is T004 / #4).
+
+- **Verb forms used.** Dotted RPC methods map to noun/verb argv by splitting on `.` and appending
+  `--json`: `daemon.status` → `mx-agent daemon status --json`, `agent.list` → `mx-agent agent list
+  --json`, `workspace.status` → `mx-agent workspace status --json` (the M0 read methods the IPC
+  client already round-trips). Structured params are written to the child's **stdin** via
+  `--input-json -` (never on argv, which is world-readable via `/proc/<pid>/cmdline` / `ps`).
+- **`--json` output framing — NOT yet live-verified.** This implementation was written without an
+  `mx-agent` binary on the build host, so the exact stdout shape (bare RPC `result` vs. a wrapper
+  such as `{jsonrpc, id, result}` / `{ok, data}`) is **still open** (spec open question #1). The
+  normalizer (`CliClient`) handles **both**: a top-level object with a `result` field is unwrapped to
+  `.result`; otherwise the parsed JSON is treated as the bare result — so the resolved value matches
+  what `IpcClient.call()` returns for the same method either way. **Action:** run `mx-agent daemon
+  status --json` against a live `v0.2.1` daemon and record the actual framing + `--input-json -` /
+  stdin support per verb here, then tighten the normalizer if the wrapper differs from these two shapes.
+- **Errors** are normalized onto the same closed `IpcErrorCode` set (aliased `TransportErrorCode`):
+  spawn `ENOENT` → `not_running`; other spawn errors → `connect_failed`; deadline/kill → `timeout`;
+  a JSON-RPC error object on stdout/stderr → `rpc`; any other non-JSON / non-zero exit → `protocol`;
+  credential-shaped args rejected pre-spawn → `invalid_args`.
+- **Secret boundary.** The CLI child is spawned under a deny-by-default env allowlist
+  (`packages/toolbelt/src/cli/env.ts`) — no `MATRIX_*` / `MX_AGENT_*`, no provider keys, no
+  `GH_TOKEN`. The mx-agent binary needs none of these (it reads its signing key + Matrix session from
+  on-disk state). The non-secret bin override is `MXL_AGENT_BIN` (read from the parent env only, never
+  forwarded). This allowlist is intentionally **stricter** than `adw_sdlc/src/env.ts`.
+
 ## Deltas from design §2
 
 **None material.** CLI verbs are `agent.<noun>`/`workspace.<noun>`; published schemas match the
