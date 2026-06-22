@@ -1,0 +1,24 @@
+{
+  "name": "@mx-loom/toolbelt",
+  "version": "0.0.0",
+  "private": true,
+  "license": "Apache-2.0",
+  "description": "mx-loom toolbelt — the adaptation layer between agent runtimes and the mx-agent coordination daemon (Boundary B). T002: framed JSON-RPC 2.0 IPC client.",
+  "type": "module",
+  "engines": {
+    "node": ">=20.19"
+  },
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "build": "tsc -p tsconfig.build.json",
+    "test": "vitest run"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.0",
+    "typescript": "^5.9.3",
+    "vitest": "^4.1.8"
+  }
+}
