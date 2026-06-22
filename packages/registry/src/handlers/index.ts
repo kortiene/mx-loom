@@ -38,6 +38,20 @@ export type { DelegateToolInput } from './delegate-tool.js';
 export { mxRunCommand } from './run-command.js';
 export type { RunCommandInput } from './run-command.js';
 
+// The context-sharing handlers (T107): the publish/fetch seam for the substrate's
+// shared-context channel. `mx_share_context` (room provenance → `share.file/diff/env`
+// from `kind` → normalize to `ok({ context_id, sha256 }, audit_ref)`) and
+// `mx_get_context` (room provenance → `share.get` → surface `{ context_id, kind?,
+// sha256?, size_bytes?, inline?, media_mxc? }`). Both `sync`. The inline-vs-media
+// (≤256 KiB) split + sha256 are substrate behavior the handlers *surface*, never
+// reimplement — mx-loom never downloads Matrix media. Plus the shared flat-payload
+// classifier they both normalize through.
+export { mxShareContext } from './share-context.js';
+export type { ShareContextInput } from './share-context.js';
+export { mxGetContext } from './get-context.js';
+export type { GetContextInput } from './get-context.js';
+export { contextResponseToResult } from './context-response.js';
+
 // The pure agent-record projectors (non-secret subset) + their model-facing types.
 export { projectAgentSummary, projectAgentDetail, projectTools } from './agent-projection.js';
 export type { AgentSummary, AgentDetail, PublishedTool, AgentLiveness } from './agent-projection.js';

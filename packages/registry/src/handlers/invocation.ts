@@ -150,8 +150,12 @@ function stateToken(obj: Record<string, unknown>): string | undefined {
 /**
  * The correlation ids (design §4.6), read from the response's `audit_ref` block
  * if present, else flat on the record. Missing ids are `null` — never fabricated.
+ *
+ * Exported so the T107 context-sharing handlers (`mx_share_context` /
+ * `mx_get_context`) reuse the **single** correlation-id reader for their flat
+ * (`{context_id, sha256, …}`) success payloads rather than duplicating it.
  */
-function extractAuditRef(obj: Record<string, unknown> | undefined): AuditRef {
+export function extractAuditRef(obj: Record<string, unknown> | undefined): AuditRef {
   const o = obj ?? {};
   const a = asRecord(o.audit_ref) ?? o;
   return {
@@ -216,8 +220,11 @@ export function failureResult(code: ErrorCode, audit_ref: AuditRef): ToolResult 
  * error object on the record (`mapDaemonError`), else interprets the **state
  * label itself** as the daemon code (e.g. `state: "approval_denied"` with no
  * nested error object). Falls back to `internal` (safe — never the wrong code).
+ *
+ * Exported so the T107 context-sharing handlers classify a flat-payload daemon
+ * error (`{ok:false}` / `{error}`) through the **same** mapper this module uses.
  */
-function failureCode(obj: Record<string, unknown>, token: string | undefined): ErrorCode {
+export function failureCode(obj: Record<string, unknown>, token: string | undefined): ErrorCode {
   const fromPayload = mapDaemonError(obj);
   if (fromPayload !== 'internal') return fromPayload;
   if (token !== undefined) {
@@ -228,8 +235,10 @@ function failureCode(obj: Record<string, unknown>, token: string | undefined): E
 }
 
 /** Does the record carry an explicit daemon error signal (`{ok:false}` or an
- *  `error` object/string)? Used to classify a stateless failure response. */
-function hasErrorSignal(obj: Record<string, unknown>): boolean {
+ *  `error` object/string)? Used to classify a stateless failure response — and,
+ *  exported, the error discriminator the T107 context handlers reuse for their
+ *  flat-payload responses (the share/get success payload carries no state token). */
+export function hasErrorSignal(obj: Record<string, unknown>): boolean {
   if (obj.ok === false) return true;
   const err = obj.error;
   return typeof err === 'string' || asRecord(err) !== undefined;

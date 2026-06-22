@@ -157,6 +157,11 @@ const DAEMON_CODE_TO_ERROR: Readonly<Record<string, ErrorCode>> = {
   unknown_agent: 'not_found',
   unknown_tool: 'not_found',
   no_such_invocation: 'not_found',
+  // Unknown shared-context id (T107 `mx_get_context`) — exact daemon spelling
+  // pending the two-daemon round-trip; the aliases below all map to `not_found`.
+  unknown_context: 'not_found',
+  no_such_context: 'not_found',
+  context_not_found: 'not_found',
   invalid_args: 'invalid_args',
   invalid_arguments: 'invalid_args',
   invalid_params: 'invalid_args',
