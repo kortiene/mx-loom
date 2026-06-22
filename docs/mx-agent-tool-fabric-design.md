@@ -4,7 +4,7 @@
 
 | | |
 |---|---|
-| Status | Active — M0 in progress (T001–T005 delivered); see `docs/backlog.md` |
+| Status | Active — M0 complete (T001–T008 delivered); M1 started — T101 landed; see `docs/backlog.md` |
 | Date | 2026-06-18 |
 | Substrate pin | mx-agent `v0.2.1` (alpha) |
 | Closes | mx-agency #37 (SDK seam) |
@@ -116,7 +116,7 @@ The canonical registry is transport-neutral. **MCP is the universal binding** (e
 
 **Custom runners.** Anything that can (a) call a Unix socket and (b) accept a JSON-Schema tool list gets the tools for free — point it at the MCP server, or link the toolbelt library directly.
 
-> **Build rule:** never hand-author tools per runtime. One canonical descriptor set → generated MCP server + generated native shims (ADK `LongRunningFunctionTool`, Claude `canUseTool`) from day one.
+> **Build rule:** never hand-author tools per runtime. One canonical descriptor set → generated MCP server + generated native shims (ADK `LongRunningFunctionTool`, Claude `canUseTool`) from day one. *(That canonical descriptor set is now a concrete, validated, enumerable module — `@mx-loom/registry` (T101). The generators themselves are T109/T110, still to come.)*
 
 ---
 
@@ -124,7 +124,7 @@ The canonical registry is transport-neutral. **MCP is the universal binding** (e
 
 Seven requirements; every runtime binding must honor them.
 
-1. **Namespaced descriptor.** `name` (`mx_*`), `description`, `input_schema` (JSON Schema). For `mx_delegate_tool`, the inner tool's `input_schema` is passed through from the target agent's published `ToolSchema`.
+1. **Namespaced descriptor.** `name` (`mx_*`), `description`, `input_schema` (JSON Schema), `output_schema` (JSON Schema for the success payload), and an `async_semantics` flag (`sync` | `deferred` — see point 3). For `mx_delegate_tool`, the inner tool's `input_schema` is passed through from the target agent's published `ToolSchema`. *(Implemented in T101 as the canonical `ToolDescriptor` in `@mx-loom/registry` — a transport-neutral, secret-free, deep-frozen descriptor set with a fail-fast loader/validator (`loadRegistry()`). It is enumerable so the bindings (T109/T110) and the JSON Schema → Zod converter (T111) read it directly; it is the closed no-authority allowlist of model-facing verbs. The result **envelope** below is T102, not part of the descriptor.)*
 
 2. **One normalized result envelope** — the single shape every tool returns:
 

@@ -4,7 +4,7 @@ Derived from [`mx-agent-tool-fabric-design.md`](./mx-agent-tool-fabric-design.md
 
 | | |
 |---|---|
-| Status | Active — M0 in progress; GitHub issues live in `kortiene/mx-loom` (T001–T008 delivered) |
+| Status | Active — M0 complete; M1 in progress — T101 landed; GitHub issues live in `kortiene/mx-loom` |
 | Target repo | `kortiene/mx-loom` — this repo (branded `mx-loom`); a fresh repo, so issue numbering starts clean |
 | ID scheme | Local `T###` IDs for stable dependency refs; real GitHub numbers assigned at `gh issue create` time |
 | Estimate scale | T-shirt — **S** ≈ ½–1d · **M** ≈ 1–2d · **L** ≈ 3–5d |
@@ -173,9 +173,10 @@ M6                        ▼
 - **Scope:** Descriptor = `name` (`mx_*`), `description`, `input_schema` (JSON Schema), `output_schema`, async semantics flag. Registry loader/validator.
 - **Out of scope:** Individual tool handlers (T104–T108).
 - **Acceptance criteria:**
-  - [ ] Descriptors validate as JSON Schema
-  - [ ] Registry enumerable; binding generators can read it
-- **Dependencies:** blocked-by T004
+  - [x] Descriptors validate as JSON Schema — `loadRegistry()` compiles every `input_schema`/`output_schema` against the draft-07 meta-schema (Ajv) at construction; a malformed schema throws `DescriptorValidationError` naming the field.
+  - [x] Registry enumerable; binding generators can read it — `ToolRegistry` exposes `list()`/`get()`/`has()`/`[Symbol.iterator]`; a fake-binding-generator test renders a tool list with no handler/daemon.
+- **Dependencies:** blocked-by T004 · **unblocks T102** (envelope), **T104/T105** (discovery + delegation handlers), **T109** (MCP server), **T110** (Claude shim), **T111** (JSON Schema → Zod).
+- **Status:** Landed (`packages/registry` = `@mx-loom/registry`: `ToolDescriptor` model, the 7 P0 `mx_*` descriptors, `loadRegistry`/`DescriptorValidationError`, the Ajv-backed `SchemaValidator` seam, the no-authority + secret-free invariants). **Resolved decisions:** (#1) Ajv as a **runtime** dep behind an injectable seam — toolbelt keeps its zero-runtime-dep streak; (#2) a new leaf package; (#3) JSON Schema dialect = **draft-07**; (#4) `async_semantics: 'sync' | 'deferred'`; (#5) descriptor metadata-only, RPC mapping attaches in T104–T108; (#7) the **7 P0** verbs now, P1 `mx_cancel`/`mx_workspace_status` with T108; (#8) no `guarded` hint; (#9) no `version` field. The comprehensive per-descriptor test suite (the spec's Testing Plan) lands in the dedicated tests phase; a smoke suite proves both ACs now.
 
 #### T102 · registry: normalized result envelope + error taxonomy + idempotency
 `area/registry` `type/feature` `P0` · **M** · M1
