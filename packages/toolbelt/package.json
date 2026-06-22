@@ -3,7 +3,7 @@
   "version": "0.0.0",
   "private": true,
   "license": "Apache-2.0",
-  "description": "mx-loom toolbelt — the adaptation layer between agent runtimes and the mx-agent coordination daemon (Boundary B). T002: framed JSON-RPC 2.0 IPC client; T003: one-shot `--json` CLI fallback transport.",
+  "description": "mx-loom toolbelt — the adaptation layer between agent runtimes and the mx-agent coordination daemon (Boundary B). T002: framed JSON-RPC 2.0 IPC client; T003: one-shot `--json` CLI fallback transport; T004: unified MxClient (IPC primary, CLI fallback) + createClient factory.",
   "type": "module",
   "engines": {
     "node": ">=20.19"

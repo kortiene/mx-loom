@@ -1,5 +1,6 @@
 import { spawn } from 'node:child_process';
 
+import { assertNoCredentialShapedArgs } from '../guards.js';
 import { MAX_FRAME_BYTES } from '../ipc/framing.js';
 import type { DaemonStatus, JsonRpcErrorBody } from '../ipc/types.js';
 import { TransportError } from '../transport.js';
@@ -24,41 +25,6 @@ export interface CliClientOptions {
   defaultTimeoutMs?: number;
   /** Optional extra NON-secret env keys the CLI legitimately needs (deny-prefixed keys dropped even here). */
   extraEnvAllow?: readonly string[];
-}
-
-/**
- * Reject params whose **keys** look credential-shaped before they can become
- * argv. Matters acutely on the CLI path because argv is world-visible. Mirrors
- * the secret-free tool contract (design §4.7): no field carries credentials.
- */
-const CREDENTIAL_KEY_RE = /(?:token|secret|password|passwd|api[_-]?key|signing[_-]?key|private[_-]?key|matrix_)/i;
-
-/** A handful of well-known secret *value* shapes (GitHub / Matrix / Slack tokens). */
-const CREDENTIAL_VALUE_RE = /^(?:gh[posru]_|github_pat_|syt_|xox[abprs]-)/;
-
-/**
- * Recursively reject credential-shaped params *before* spawning. Throws
- * `TransportError('invalid_args')`; error messages name only the key/path,
- * never the value, so they stay secret-free.
- */
-function assertNoCredentialShapedArgs(value: unknown, path = '$'): void {
-  if (typeof value === 'string') {
-    if (CREDENTIAL_VALUE_RE.test(value)) {
-      throw new TransportError('invalid_args', `refusing to send a credential-shaped value at ${path}`);
-    }
-    return;
-  }
-  if (value === null || typeof value !== 'object') return;
-  if (Array.isArray(value)) {
-    value.forEach((item, i) => assertNoCredentialShapedArgs(item, `${path}[${i}]`));
-    return;
-  }
-  for (const [key, child] of Object.entries(value)) {
-    if (CREDENTIAL_KEY_RE.test(key)) {
-      throw new TransportError('invalid_args', `refusing to send credential-shaped argument '${key}' to the mx-agent CLI`);
-    }
-    assertNoCredentialShapedArgs(child, `${path}.${key}`);
-  }
 }
 
 function tryParseJson(text: string): unknown {

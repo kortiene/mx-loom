@@ -4,7 +4,7 @@
 
 | | |
 |---|---|
-| Status | Design proposal (extends mx-agency ADR-11) |
+| Status | Active — M0 in progress (T001–T004 delivered); see `docs/backlog.md` |
 | Date | 2026-06-18 |
 | Substrate pin | mx-agent `v0.2.1` (alpha) |
 | Closes | mx-agency #37 (SDK seam) |
@@ -230,7 +230,7 @@ Keep a clean line between **ephemeral cognition state (runtime)** and **durable 
 
 One runtime family, one workspace, the delegation core — and finally close issue #37.
 
-- **mx-loom v0 (TypeScript)** — implements ADR-11's transport: daemon IPC primary, `--json` CLI fallback, behind the `app/src/sdk` seam. Pin mx-agent `v0.2.1` + a conformance check before any version bump.
+- **mx-loom v0 (TypeScript)** — implements ADR-11's transport: daemon IPC primary, `--json` CLI fallback, behind the `app/src/sdk` seam. The single entry point callers use is `createClient()` (→ `MxClient`), which selects the transport and fails over IPC→CLI **only on `not_running`** (the one provably pre-dispatch fault), so no possibly-applied mutating call is ever re-issued. Pin mx-agent `v0.2.1` + a conformance check before any version bump.
 - **Canonical registry** with: `mx_find_agents`, `mx_describe_agent`, `mx_delegate_tool`, `mx_run_command` (guarded, off by default), `mx_await_result`, `mx_share_context`, `mx_get_context`. (Full task tools follow in Phase 3.)
 - **Both bindings from day one:** a generated MCP server *and* a Claude Agent SDK in-process binding (`createSdkMcpServer` + `tool()`), with `canUseTool` wired to the approval status.
 - **The full result envelope (§4)** including the `awaiting_approval` deferred path and `mx_await_result`.
