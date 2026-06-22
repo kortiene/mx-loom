@@ -4,7 +4,7 @@
 
 | | |
 |---|---|
-| Status | Active — M0 in progress (T001–T004 delivered); see `docs/backlog.md` |
+| Status | Active — M0 in progress (T001–T005 delivered); see `docs/backlog.md` |
 | Date | 2026-06-18 |
 | Substrate pin | mx-agent `v0.2.1` (alpha) |
 | Closes | mx-agency #37 (SDK seam) |
@@ -220,7 +220,7 @@ Keep a clean line between **ephemeral cognition state (runtime)** and **durable 
 
 - **Task state.** The DAG (`com.mxagent.task.v1`) is the durable, shared plan — `proposed→pending→assigned→executing→succeeded/failed`, with `depends_on`/`blocks` and signed `action`. The runtime owns how to think about the plan; MX owns the plan of record. This is also the crash-recovery boundary: a runtime can die and a new one resumes from task state.
 
-- **Sessions.** Define `MxSession = { agent_id, room/workspace, daemon socket, correlation_id }`. A runtime conversation maps 1:1 to an MX agent registration. The toolbelt holds the session handle and threads `correlation_id` onto every call so a cognitive session is reconstructable across delegations. Registration (`agent.register`) happens once at session start; heartbeats keep liveness.
+- **Sessions.** Define `MxSession = { agent_id, room/workspace, daemon socket, correlation_id }`. A runtime conversation maps 1:1 to an MX agent registration. The toolbelt holds the session handle and threads `correlation_id` onto every call so a cognitive session is reconstructable across delegations. Registration (`agent.register`) happens once at session start; heartbeats keep liveness. *(Implemented in T005: `openSession()` in `packages/toolbelt` is the session entry point — registration is toolbelt-run lifecycle, not a model tool, and `correlation_id` is stamped on every outbound call. Stamping into the signed Matrix events — so it survives across delegations — is gated on daemon support and off by default until verified. The `audit_ref` the id ultimately lands in is the M1 envelope, T102, not yet built.)*
 
 - **Audit.** The signed Matrix event stream is the audit log — immutable, room-scoped, Ed25519-signed, replay-protected. Every tool result carries `audit_ref`, so the app layer can correlate "model decided X" ↔ "daemon executed Y" ↔ "operator approved Z." Mirror these into mx-agency's existing audit store (ADR-07/ADR-10, Postgres + RLS) for queryable, tenant-scoped history. Two-tier audit: substrate = tamper-evident truth, app store = queryable index.
 
@@ -230,7 +230,7 @@ Keep a clean line between **ephemeral cognition state (runtime)** and **durable 
 
 One runtime family, one workspace, the delegation core — and finally close issue #37.
 
-- **mx-loom v0 (TypeScript)** — implements ADR-11's transport: daemon IPC primary, `--json` CLI fallback, behind the `app/src/sdk` seam. The single entry point callers use is `createClient()` (→ `MxClient`), which selects the transport and fails over IPC→CLI **only on `not_running`** (the one provably pre-dispatch fault), so no possibly-applied mutating call is ever re-issued. Pin mx-agent `v0.2.1` + a conformance check before any version bump.
+- **mx-loom v0 (TypeScript)** — implements ADR-11's transport: daemon IPC primary, `--json` CLI fallback, behind the `app/src/sdk` seam. `createClient()` (→ `MxClient`) is the base transport entry point; it selects transport and fails over IPC→CLI **only on `not_running`** (the one provably pre-dispatch fault), so no possibly-applied mutating call is ever re-issued. `openSession()` (→ `MxSession`) layers the session model on top: one `agent.register` at start, a cancellable liveness heartbeat, and a session-stable `correlation_id` stamped on every outbound call. Pin mx-agent `v0.2.1` + a conformance check before any version bump.
 - **Canonical registry** with: `mx_find_agents`, `mx_describe_agent`, `mx_delegate_tool`, `mx_run_command` (guarded, off by default), `mx_await_result`, `mx_share_context`, `mx_get_context`. (Full task tools follow in Phase 3.)
 - **Both bindings from day one:** a generated MCP server *and* a Claude Agent SDK in-process binding (`createSdkMcpServer` + `tool()`), with `canUseTool` wired to the approval status.
 - **The full result envelope (§4)** including the `awaiting_approval` deferred path and `mx_await_result`.
@@ -258,7 +258,7 @@ One runtime family, one workspace, the delegation core — and finally close iss
 
 | Phase | Goal | Key deliverables | Exit criteria |
 |---|---|---|---|
-| **0 — SDK seam** | Close #37 | mx-loom: IPC + CLI-fallback transport; version pin + conformance suite | Toolbelt can `agent.register`, `agent.list`, `call.start` against a live daemon; conformance green on v0.2.1 |
+| **0 — SDK seam** | Close #37 | mx-loom: IPC + CLI-fallback transport; session model + agent registration; version pin + conformance suite | Toolbelt can `agent.register`, `agent.list`, `call.start` against a live daemon; conformance green on v0.2.1 |
 | **1 — Delegation MVP** | One runtime family, both bindings | Canonical registry (7 tools incl. guarded `mx_run_command`) + result envelope + async handle; **MCP server + Claude native shim**; approval-gated golden test | Claude agent delegates a named tool *and* a guarded command to a remote agent through an approval gate, via both bindings; audit refs land in Postgres |
 | **2 — Universal binding** | ADK / OpenCode / Pi | ADK `MCPToolset` + `LongRunningFunctionTool` shim; OpenCode `mcp` entry; Pi binding — all from the same descriptor set | Same golden test passes under ADK, OpenCode, Pi |
 | **3 — Coordination depth** | Plans + context as tools | Task DAG tools (`mx_create/update/list_tasks`), `mx_cancel`, `task.watch` resumption | A multi-agent plan executes across ≥2 agents with durable task state surviving a runtime restart |

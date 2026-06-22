@@ -38,3 +38,13 @@ export type { RetryPolicy, RetryDeps } from './retry.js';
 // Shared credential-shaped-arg guard (hoisted from the CLI client so it applies
 // on both transports; T008 hardens it further).
 export { assertNoCredentialShapedArgs, CREDENTIAL_KEY_RE, CREDENTIAL_VALUE_RE } from './guards.js';
+
+// Session model + agent registration (T005) — layered on MxClient.
+// `openSession()` registers an agent, runs a liveness heartbeat, and threads a
+// session-stable correlation_id onto every outbound call.
+export { openSession, DEFAULT_HEARTBEAT_INTERVAL_MS } from './session.js';
+export type { MxSession, MxSessionOptions, SessionState } from './session.js';
+export { startHeartbeat } from './heartbeat.js';
+export type { HeartbeatHandle, HeartbeatOptions, HeartbeatSchedule } from './heartbeat.js';
+export { newCorrelationId, withCorrelationParam, CORRELATION_PARAM_KEY } from './correlation.js';
+export type { AgentState, AgentListEntry, AgentLiveness } from './agent-state.js';

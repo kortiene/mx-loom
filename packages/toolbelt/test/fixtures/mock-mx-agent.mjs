@@ -5,6 +5,25 @@
  *
  * Synthetic values only — no real tokens, credentials, or secrets.
  */
+
+// Synthetic AgentState returned by agent.register and agent.list (T005 session tests).
+// Field names match agent-state.ts AgentState; values are all synthetic/non-secret.
+const MOCK_AGENT_STATE = {
+  agent_id: 'agent-fixture-session-001',
+  kind: 'runtime',
+  matrix_user_id: '@session-fixture:localhost',
+  device_id: 'DEVFIXTURE',
+  signing_key_id: 'mxagent-ed25519:FIXTUREKEYID',
+  signing_public_key: 'Zml4dHVyZS1wdWJsaWMta2V5LWJhc2U2NA==', // synthetic base64
+  status: 'active',
+  capabilities: [],
+  tools: [],
+  workspace: {},
+  load: { running_invocations: 0, max_invocations: 10 },
+  last_seen_ts: 1_700_001_000_000,
+  state_rev: 1,
+};
+
 const args = process.argv.slice(2);
 
 // Non-flag segments identify the command; strip --xxx and bare - from argv.
@@ -114,6 +133,21 @@ async function main() {
       // are absent from argv (never-on-argv E2E proof). The parent strips flags
       // before routing via methodToArgv; this case must be reachable via 'mock dump argv'.
       process.stdout.write(JSON.stringify(process.argv.slice(2)));
+      break;
+
+    case 'agent register':
+      // Simulates daemon agent.register: params arrive via stdin (--input-json -).
+      // Returns the synthetic AgentState wrapped in a {result} envelope so
+      // CliClient.unwrapResult() extracts the AgentState (matching IPC behavior).
+      // stdinData is already drained by the hasInputJson block above.
+      process.stdout.write(JSON.stringify({ result: MOCK_AGENT_STATE }));
+      break;
+
+    case 'agent list':
+      // Simulates daemon agent.list: returns one entry for the fixture agent as active.
+      process.stdout.write(
+        JSON.stringify({ result: [{ agent: MOCK_AGENT_STATE, liveness: 'active' }] }),
+      );
       break;
 
     default:

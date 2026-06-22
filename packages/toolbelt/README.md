@@ -84,6 +84,53 @@ credential-shaped key/value is rejected as `invalid_args` uniformly, on IPC and
 CLI alike. Diagnostics carry only the error code, transport name, socket path,
 CLI bin name, and attempt number — never params, env values, or raw output.
 
+## Sessions + agent registration (T005)
+
+`MxSession` (via the `openSession()` factory) is the runtime-conversation ⇄
+agent-registration handle (design §7), layered **on top of** `MxClient`. A
+runtime conversation maps **1:1** to an MX agent registration.
+
+```ts
+import { openSession } from '@mx-loom/toolbelt';
+
+const s = await openSession(); // builds a client, calls agent.register, starts the heartbeat
+s.agentId; // captured AgentState.agent_id — the agent is now visible via agent.list
+await s.call('agent.list'); // correlation-stamped + credential-guarded
+await s.close(); // stops the heartbeat; deregisters or lets liveness decay
+```
+
+What it does — and only this; it changes neither the wire protocol, the
+transports, nor the daemon:
+
+- **Registers on start.** `openSession()` calls `agent.register` exactly once
+  through the client, captures the full `AgentState`, and exposes `agentId` /
+  `agentState`. A failed register rejects (no half-open session; a self-built
+  client is closed) and starts no heartbeat.
+- **Keeps liveness `active`.** A cancellable heartbeat refreshes `last_seen_ts`
+  on `heartbeatIntervalMs` (default `15_000`). A failing tick is swallowed and
+  reported — it never crashes the process; the next success restores `active`.
+- **Threads a `correlation_id`.** One session-stable `corr_<uuid>` is stamped on
+  the diagnostics seam of **every** outbound call (`session.call`). Injecting it
+  into daemon *params* (so it rides into the signed Matrix events across
+  delegations) is **gated on daemon support** — enabled only for methods listed
+  in `correlationParamMethods` (default empty).
+- **Deregister-or-decay on close.** `close()` is idempotent: it stops the
+  heartbeat, calls `deregisterMethod` if one is configured (failures are logged,
+  not thrown), otherwise lets liveness decay to `stale`/`offline`, and closes the
+  client only if the session owns it. A process crash lands in the decay path.
+
+It composes the lower layers rather than weakening them: every call goes through
+`client.call`, so `assertNoCredentialShapedArgs` runs on `agent.register` and
+every heartbeat tick, and no env surface is added. Registration is toolbelt-run
+**lifecycle** — never a model-facing `mx_*` authority tool.
+
+> **Gated defaults (verified-safe; each a one-line swap once a live v0.2.1 check
+> confirms the surface).** Heartbeat refresh defaults to idempotent
+> re-`agent.register` (`state_rev` implies a versioned upsert); set
+> `heartbeatMethod` if a dedicated `agent.heartbeat` is confirmed. Deregister
+> defaults to decay (no method); set `deregisterMethod` once a deregister RPC is
+> confirmed. Correlation param propagation defaults off.
+
 ## Public API
 
 | Export | Kind | Notes |
@@ -93,6 +140,12 @@ CLI bin name, and attempt number — never params, env values, or raw output.
 | `MxClientOptions` | type | `transport`, `socketPath`, `cliBin`, `env`, `defaultTimeoutMs`, `retry`, factories (testing seam) |
 | `TransportPreference` | type | `'auto' \| 'ipc' \| 'cli'` |
 | `RetryPolicy`, `DEFAULT_RETRY_POLICY`, `withRetry`, `backoffDelay` | retry primitives | conservative, pre-dispatch-only by default |
+| `openSession(options?)` | factory | registers an agent, returns an active `MxSession` |
+| `MxSession` | interface | `agentId` / `agentState` / `room` / `correlationId` / `state` / `call` / `liveness` / `close` |
+| `MxSessionOptions`, `SessionState`, `DEFAULT_HEARTBEAT_INTERVAL_MS` | session types | client ownership, register params, heartbeat + correlation knobs (all gated defaults) |
+| `startHeartbeat`, `HeartbeatHandle`, `HeartbeatOptions`, `HeartbeatSchedule` | heartbeat | cancellable interval loop with an injected scheduler |
+| `newCorrelationId`, `withCorrelationParam`, `CORRELATION_PARAM_KEY` | correlation | `corr_<uuid>` mint + the gated param-stamping rule |
+| `AgentState`, `AgentListEntry`, `AgentLiveness` | types | typed view of `agent.register` / `agent.list` payloads |
 | `IpcClient`, `CliClient` | classes | the underlying transports (use directly only to pin behavior) |
 | `MxTransport`, `CallOptions`, `TransportError`, `TransportErrorCode` | seam | shared interface + closed error taxonomy |
 | `assertNoCredentialShapedArgs`, `CREDENTIAL_KEY_RE`, `CREDENTIAL_VALUE_RE` | guard | shared secret-boundary guard (T008 hardens) |
