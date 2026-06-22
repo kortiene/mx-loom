@@ -30,6 +30,7 @@ import {
   type ApprovalInfo,
   type AuditRef,
   type ToolResult,
+  type ToolStatus,
 } from '../envelope.js';
 import { DENIAL_CODES, mapDaemonError, type DenialCode, type ErrorCode } from '../errors.js';
 
@@ -235,6 +236,26 @@ function hasErrorSignal(obj: Record<string, unknown>): boolean {
 }
 
 /**
+ * Does the record carry an explicit **success** signal? A synchronous `call.start`
+ * success may arrive as a bare `CallResponse{ ok: true, result }` with no
+ * running/awaiting/ok *state token* — `invocationToResult` would treat that
+ * tokenless shape as unrecognised (`internal`), which is correct for an
+ * `invocation.get` read (where a missing state IS suspicious) but wrong for a
+ * `call.start` reply. {@link callResponseToResult} adds this signal so a sync
+ * success normalises to `ok` (T105 AC 1).
+ */
+function hasSuccessSignal(obj: Record<string, unknown>): boolean {
+  return obj.ok === true || asRecord(obj.result) !== undefined;
+}
+
+/** Is `status` a terminal envelope status (`ok` / `denied` / `error`)? The
+ *  complement (`running` / `awaiting_approval`) is still-pending. Shared by the
+ *  `mx_await_result` poll loop (T103) and the `mx_delegate_tool` inline-wait (T105). */
+export function isTerminal(status: ToolStatus): boolean {
+  return status === 'ok' || status === 'denied' || status === 'error';
+}
+
+/**
  * Map a raw `invocation.get` response onto a T102 {@link ToolResult}. Pure;
  * **never throws**. Builds the envelope only through the T102 constructor helpers,
  * so the output conforms to `ENVELOPE_SCHEMA` by construction.
@@ -266,6 +287,60 @@ export function invocationToResult(raw: unknown): ToolResult {
       return hasErrorSignal(obj)
         ? failureResult(failureCode(obj, token), audit_ref)
         : errored('internal', UNRECOGNISED_MESSAGE, audit_ref);
+  }
+}
+
+/**
+ * Map a raw `call.start` `CallResponse` onto a T102 {@link ToolResult} (T105 / #13)
+ * — the sibling of {@link invocationToResult} for the **initial** delegation reply.
+ *
+ * It shares every reader/classifier with `invocationToResult` (the state-token
+ * table, `failureCode`, `approvalOf`, `extractAuditRef`, …) so an initial
+ * delegation result and a later `mx_await_result` poll on the same shape agree by
+ * construction. The **one** difference is the default branch: a synchronous
+ * `call.start` success can arrive as a bare `{ ok: true, result }` with no state
+ * token, so a tokenless reply with a {@link hasSuccessSignal} normalises to `ok`
+ * (not the `internal` an `invocation.get` read would yield). Authoring
+ * `invocationToResult` (T103, verified for `invocation.get`) untouched keeps each
+ * verb's tokenless semantics correct.
+ *
+ * Pure; **never throws**; builds the envelope only through the T102 helpers, so the
+ * output conforms to `ENVELOPE_SCHEMA` by construction.
+ */
+export function callResponseToResult(raw: unknown): ToolResult {
+  const obj = asRecord(raw);
+  const audit_ref = extractAuditRef(obj);
+
+  // Not an object (null / scalar / array) → cannot classify.
+  if (obj === undefined) {
+    return errored('internal', UNRECOGNISED_MESSAGE, audit_ref);
+  }
+
+  const token = stateToken(obj);
+  const kind = token !== undefined ? INVOCATION_STATE_KIND[token] : undefined;
+
+  switch (kind) {
+    case 'running':
+      return running(handleOf(obj, audit_ref), audit_ref);
+    case 'awaiting_approval':
+      return awaitingApproval(handleOf(obj, audit_ref), approvalOf(obj), audit_ref);
+    case 'ok':
+      return ok(resultOf(obj), audit_ref);
+    case 'fail':
+      return failureResult(failureCode(obj, token), audit_ref);
+    default: {
+      // No recognised state token. Classify by signal, most-specific first:
+      //  - an explicit error signal (`{ok:false}` / `error`) is a terminal failure;
+      //  - an explicit SUCCESS signal (`{ok:true}` / a `result` object) is a
+      //    synchronous `ok` (the call.start-specific case `invocationToResult` lacks);
+      //  - a bare handle with no state is a deferred `running`;
+      //  - otherwise genuinely unrecognised → `internal`.
+      if (hasErrorSignal(obj)) return failureResult(failureCode(obj, token), audit_ref);
+      if (hasSuccessSignal(obj)) return ok(resultOf(obj), audit_ref);
+      const handle = handleOf(obj, audit_ref);
+      if (handle !== '') return running(handle, audit_ref);
+      return errored('internal', UNRECOGNISED_MESSAGE, audit_ref);
+    }
   }
 }
 

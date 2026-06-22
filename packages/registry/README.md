@@ -9,11 +9,12 @@ secret-free set of `mx_*` tool descriptors plus a fail-fast loader/validator.
 
 It now ships **three layers**: the descriptor model and registry loader/validator
 (T101), the normalized result-envelope + error taxonomy + idempotency contract
-(T102), and the first three handlers — `mx_await_result` (T103), `mx_find_agents`,
-and `mx_describe_agent` (T104) — all backed by an injected daemon-call seam so
-`@mx-loom/toolbelt` stays a `devDependency`. The delegation/exec handlers
-(T105–T108), the MCP binding (T109), the Claude shim (T110), and the JSON Schema →
-Zod converter (T111) all *read* descriptors and *build envelopes* from here.
+(T102), and the handlers — `mx_await_result` (T103), `mx_find_agents` /
+`mx_describe_agent` (T104), and `mx_delegate_tool` (T105) — all backed by an
+injected daemon-call seam so `@mx-loom/toolbelt` stays a `devDependency`. The
+remaining handlers (`mx_run_command` T106, T107–T108), the MCP binding (T109), the
+Claude shim (T110), and the JSON Schema → Zod converter (T111) all *read*
+descriptors and *build envelopes* from here.
 
 ## The descriptor model
 
@@ -272,6 +273,68 @@ await mxDescribeAgent({ agent_id: 'agent_b' }, deps);
   fabricated). Both handlers **never throw** — a transport/daemon fault maps onto
   the closed taxonomy through the shared `faultToResult` (extracted from
   `mx_await_result`), mirroring the T103 precedent.
+
+## The delegation handler (T105)
+
+`mx_delegate_tool` is the **primary delegation verb** — the spine of the fabric:
+discovery (T104) tells the model who is in the room and what they publish;
+`mx_delegate_tool` is the verb that **acts** on that mesh by invoking a *named
+tool* on a remote agent and turning the daemon's `CallResponse` into the T102
+envelope (design §2 / §4.1 / §5).
+
+```ts
+import { mxDelegateTool } from '@mx-loom/registry';
+import { createClient } from '@mx-loom/toolbelt';
+
+const deps = { daemon: createClient(), room: session.room }; // room from MxSession, NOT model input
+const res = await mxDelegateTool(
+  { agent: 'agent_b', tool: 'run_tests@1.0.0', args: { filter: 'unit' } },
+  deps,
+);
+//    ^ ToolResult — ok (sync success), running / awaiting_approval (deferred), denied / error
+```
+
+- **Four phases (+ optional inline wait).** `agent.tools {agent_id}` → resolve the
+  target tool's published `input_schema` → **validate `args` against it before
+  dispatch** → `call.start` → normalize the `CallResponse`. A non-terminal result
+  plus a positive `wait_ms` composes `mx_await_result` so a fast remote tool feels
+  synchronous (inheriting T103's "a `wait_ms` expiry is the pending envelope, not a
+  `timeout`").
+- **`input_schema` pass-through (AC 1/AC 2).** The inner schema is re-fetched from
+  the target's published `ToolSchema` (never trusted from model input) and the
+  caller's `args` are validated against it. Invalid args return
+  `error` / `invalid_args` **before `call.start` is dispatched**. Client-side
+  validation is a fast-fail convenience — the receiving daemon re-validates
+  in-sandbox, so an absent/malformed target schema degrades to "let the daemon
+  decide", never a hard block.
+- **Every disposition mapped (AC 3).** `callResponseToResult` (the sibling of
+  `invocationToResult`, sharing every reader/classifier) maps a sync `ok` with the
+  inner tool's `result`, a deferred `running` handle, a held `awaiting_approval`
+  (handle + approval block), and the denial/fault terminals — so the initial
+  delegation result and a later `mx_await_result` poll agree by construction.
+  `policy_denied` → `denied('policy_denied')`, `untrusted_key` → `denied(…)`.
+- **Idempotency, end-to-end.** Uses the caller's `idempotency_key` if supplied,
+  else generates one once per invocation, places it in the `call.start` params, and
+  never regenerates it on a transport-level retry (`MxClient.withRetry` reuses
+  `params` verbatim, so the daemon dedupes).
+- **Populated `audit_ref`.** Unlike the T104 local reads, delegation is a real
+  Matrix round-trip, so `audit_ref` is filled from the `CallResponse` correlation
+  ids (`null` when the daemon omits one, never fabricated).
+- **Injected deps, no authority.** `DelegateDeps` add an injected JSON Schema
+  `validator` (default: a lazily-created Ajv validator) and the session `room` (the
+  model never names a Matrix room; a missing room fails fast as `internal`). The
+  handler emits a *signed request* only — trust/policy/approval/sandbox all run
+  out-of-process on the receiving daemon. The secret boundary is the concrete
+  `MxClient` (`assertNoCredentialShapedArgs` before dispatch → a credential-shaped
+  `args` key surfaces as `invalid_args`; `redactSecrets` on the inbound result),
+  which the registry never re-implements.
+
+> **Staged at the two-daemon round-trip.** The `call.start` param names
+> (`room`/`agent`/`tool`/`args`/`idempotency_key`), the `CallResponse` disposition
+> vocabulary, the held-invocation `approval` fields, and the `audit_ref`
+> availability are authored against the design's named shapes now and pinned behind
+> `MXL_CONFORMANCE_TWO_DAEMON=1`. A new daemon code degrades to `internal` (never
+> the wrong code), never throws.
 
 ## Invariants
 

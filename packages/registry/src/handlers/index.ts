@@ -5,11 +5,13 @@
 // daemon (a structural subset of the toolbelt's `MxTransport`, imported
 // `type`-only), so the registry keeps its zero runtime toolbelt dependency.
 
-// The injected daemon-call seam + clock seams.
-export type { DaemonCall, HandlerDeps } from './deps.js';
+// The injected daemon-call seam + clock seams (+ the T105 delegation deps).
+export type { DaemonCall, HandlerDeps, DelegateDeps } from './deps.js';
 
-// The pure invocation-state → envelope normalizer (useful to bindings + tests).
-export { classifyInvocation, invocationToResult } from './invocation.js';
+// The pure invocation-state → envelope normalizers (useful to bindings + tests):
+// `invocationToResult` for an `invocation.get` read (T103), `callResponseToResult`
+// for an initial `call.start` reply (T105).
+export { classifyInvocation, invocationToResult, callResponseToResult } from './invocation.js';
 export type { InvocationDisposition } from './invocation.js';
 
 // The `mx_await_result` resolver + its input type.
@@ -21,6 +23,12 @@ export { mxFindAgents } from './find-agents.js';
 export type { FindAgentsInput } from './find-agents.js';
 export { mxDescribeAgent } from './describe-agent.js';
 export type { DescribeAgentInput, DescribeAgentResult } from './describe-agent.js';
+
+// The delegation handler (T105): `mx_delegate_tool` (agent.tools → validate args →
+// call.start → normalize the CallResponse), the first handler to produce populated
+// audit_ref ids and to exercise the idempotency contract end-to-end.
+export { mxDelegateTool } from './delegate-tool.js';
+export type { DelegateToolInput } from './delegate-tool.js';
 
 // The pure agent-record projectors (non-secret subset) + their model-facing types.
 export { projectAgentSummary, projectAgentDetail, projectTools } from './agent-projection.js';

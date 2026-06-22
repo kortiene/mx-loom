@@ -116,7 +116,7 @@ The canonical registry is transport-neutral. **MCP is the universal binding** (e
 
 **Custom runners.** Anything that can (a) call a Unix socket and (b) accept a JSON-Schema tool list gets the tools for free — point it at the MCP server, or link the toolbelt library directly.
 
-> **Build rule:** never hand-author tools per runtime. One canonical descriptor set → generated MCP server + generated native shims (ADK `LongRunningFunctionTool`, Claude `canUseTool`) from day one. *(That canonical descriptor set is now a concrete, validated, enumerable module — `@mx-loom/registry` (T101). The discovery handlers `mxFindAgents` + `mxDescribeAgent` (T104) are live — the prerequisite for `mx_delegate_tool` (T105): a caller can discover a target agent and read its published `ToolSchema.input_schema` before delegating. The generators themselves are T109/T110, still to come.)*
+> **Build rule:** never hand-author tools per runtime. One canonical descriptor set → generated MCP server + generated native shims (ADK `LongRunningFunctionTool`, Claude `canUseTool`) from day one. *(That canonical descriptor set is now a concrete, validated, enumerable module — `@mx-loom/registry` (T101). The discovery handlers `mxFindAgents` + `mxDescribeAgent` (T104) are live, and the primary delegation verb `mxDelegateTool` (T105) is live: a caller discovers a target, reads its published `ToolSchema.input_schema`, validates args against it, dispatches `call.start`, and receives a normalized envelope — the full delegation spine. The generators themselves are T109/T110, still to come.)*
 
 ---
 

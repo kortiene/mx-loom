@@ -79,9 +79,11 @@ export { newIdempotencyKey, IDEMPOTENCY_KEY_PREFIX } from './idempotency.js';
 
 // The `mx_await_result` resolver (handle → terminal-or-still-pending envelope via
 // `invocation.get` + `wait_ms` poll-with-timeout) and the pure invocation-state →
-// envelope normalizer. The daemon transport is injected through `HandlerDeps`
-// (imported `type`-only), so the registry keeps its zero runtime toolbelt dep.
-export { mxAwaitResult, classifyInvocation, invocationToResult } from './handlers/index.js';
+// envelope normalizers (`invocationToResult` for an `invocation.get` read,
+// `callResponseToResult` for an initial `call.start` reply — T105). The daemon
+// transport is injected through `HandlerDeps` (imported `type`-only), so the
+// registry keeps its zero runtime toolbelt dep.
+export { mxAwaitResult, classifyInvocation, invocationToResult, callResponseToResult } from './handlers/index.js';
 export type { AwaitResultInput, HandlerDeps, DaemonCall, InvocationDisposition } from './handlers/index.js';
 
 // The discovery handlers (T104): `mx_find_agents` (agent.list → filter → project)
@@ -98,3 +100,11 @@ export type {
   PublishedTool,
   AgentLiveness,
 } from './handlers/index.js';
+
+// The delegation handler (T105): `mx_delegate_tool` — the primary delegation verb
+// (agent.tools → validate args vs the target's `input_schema` → call.start →
+// normalize the CallResponse incl. `awaiting_approval`). The first handler to emit
+// a populated `audit_ref` and to exercise the idempotency contract end-to-end. Its
+// `DelegateDeps` add an injected JSON Schema `validator` + the session `room`.
+export { mxDelegateTool } from './handlers/index.js';
+export type { DelegateToolInput, DelegateDeps } from './handlers/index.js';
