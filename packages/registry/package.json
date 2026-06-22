@@ -1,0 +1,28 @@
+{
+  "name": "@mx-loom/registry",
+  "version": "0.0.0",
+  "private": true,
+  "license": "Apache-2.0",
+  "description": "mx-loom canonical tool registry — the transport-neutral, secret-free `mx_*` tool descriptor model + a fail-fast loader/validator. T101: one enumerable, validated source every binding (MCP T109, Claude shim T110) and handler (T104–T108) reads. Descriptors only — no behavior, no daemon calls, no envelope.",
+  "type": "module",
+  "engines": {
+    "node": ">=20.19"
+  },
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "build": "tsc -p tsconfig.build.json",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "ajv": "^8.20.0"
+  },
+  "devDependencies": {
+    "@mx-loom/toolbelt": "workspace:*",
+    "@types/node": "^22.10.0",
+    "typescript": "^5.9.3",
+    "vitest": "^4.1.8"
+  }
+}

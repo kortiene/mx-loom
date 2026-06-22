@@ -39,6 +39,15 @@ last_seen_ts, state_rev}` — matches design §2 field-for-field.
 Observed for `run_tests@1.0.0` exactly as the design-doc example: input `{package(req), coverage, name}`
 → output `{exit_code, summary, log_mxc}`. **`input_schema` pass-through for `mx_delegate_tool` (T105) is confirmed available.**
 
+**JSON Schema dialect.** v0.2.1's observed `input_schema`/`output_schema` use only the simple
+`{type, properties, required}` core (no draft-specific keywords), so the exact draft is not
+distinguishable from the wire alone. **T101 standardizes the canonical registry on draft-07**
+(`http://json-schema.org/draft-07/schema#` — Ajv's default meta-schema, the broadest interop target,
+and within T111's Zod-conversion subset). The observed v0.2.1 shapes are a compatible subset of
+draft-07, so T105's dynamic pass-through validation and T111's converter agree. _Action: if a future
+v0.2.1 `ToolSchema` emits a draft-2020-12-specific keyword (`$defs`, `prefixItems`, `unevaluated*`),
+revisit the dialect pin here and in `@mx-loom/registry`._
+
 ## Surface present, full round-trip pending (needs ≥2 agents/daemons)
 
 | Method (RPC / CLI) | Status | Note |
