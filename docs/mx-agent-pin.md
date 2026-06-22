@@ -15,8 +15,17 @@ mx-agency's ADR-11.
 
 A bump to a new `mx-agent` version lands **only** when:
 
-1. The conformance suite (backlog **T007 / #7**) passes against the new version — it asserts the
-   toolbelt round-trips `agent.register` / `agent.list` / `call.start` against a live daemon.
+1. The **conformance suite** (backlog **T007 / #7**) passes against the new version. It is real and
+   executable, not aspirational:
+   - **Suite:** `packages/toolbelt/test/conformance/` — Tier 0 (pin identity), Tier 1
+     (`agent.register` / `agent.list` + closed error taxonomy), Tier 2 (`call.start` delegation,
+     two daemons).
+   - **Run it:** `pnpm --filter @mx-loom/toolbelt test:conformance` against a live daemon. With no
+     daemon it skips cleanly; in CI the `conformance` job sets `MXL_CONFORMANCE=1` so a missing or
+     drifted daemon is a **hard failure** (never a silent skip).
+   - **CI job:** `.github/workflows/conformance.yml` (job `live` for Tier 0/1, `delegate` for
+     Tier 2). For a pin-bump PR, run it against the candidate via the workflow's
+     `workflow_dispatch` `version` input **before** editing `.mx-agent-version`.
 2. If the bump spans schema or RPC changes, the surface-verification spike (**T001 / #1**) is
    re-run and any deltas are filed as issues before bumping.
 3. `.mx-agent-version` is updated **and** the PR notes the version delta and conformance result.

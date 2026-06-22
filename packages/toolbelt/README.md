@@ -161,3 +161,42 @@ pnpm -C packages/toolbelt build       # emit dist/ with d.ts
 Live integration tests are gated on `existsSync(socketPath)` (and an
 `mx-agent --version` probe for the CLI leg), so CI skips cleanly when no daemon
 is present and runs the round-trip when one is up (`mx-agent daemon start`).
+
+## Conformance (T007) — the pin-bump gate
+
+The **conformance suite** (`test/conformance/`) verifies the toolbelt's assumed
+`mx-agent` surface (Boundary B) against a **live, pinned** daemon and goes red on
+drift. It is the executable gate the pin-bump policy
+([`docs/mx-agent-pin.md`](../../docs/mx-agent-pin.md)) names: a bump lands only
+when this suite is green against the new version.
+
+Three tiers, driven through the public client (`createClient` / `openSession` /
+`MxClient.call`) — the same path real callers use:
+
+- **Tier 0 — pin identity** (`surface.conformance.test.ts`, one daemon):
+  `daemon.status.version` equals `.mx-agent-version`. A non-pinned daemon is drift.
+- **Tier 1 — discovery round-trips** (`agent-lifecycle.conformance.test.ts`, one
+  daemon): `agent.register` returns a full, well-shaped `AgentState` carrying
+  **only public** key material; `agent.list` returns `[{ agent, liveness }]` with
+  the just-registered agent `active`; known-bad inputs map onto the closed
+  `TransportError` code set; the credential-shaped-arg guard stays intact.
+- **Tier 2 — delegation** (`delegate.conformance.test.ts`, **two daemons**):
+  `call.start` round-trips a named tool to a second registered target agent
+  (mutual Ed25519 trust + a minimal allow-policy on the receiver), plus a
+  policy-denied negative and a best-effort idempotency-key retry.
+
+```sh
+pnpm -C packages/toolbelt test:conformance   # vitest, conformance config only
+```
+
+Fail-not-skip (`test/conformance/_harness.ts`): with no daemon and no flag the
+suite **skips cleanly** (harmless locally and in the fast unit CI). The
+conformance CI job sets `MXL_CONFORMANCE=1`, which turns a missing/unreachable
+daemon into a **hard failure** — otherwise "red on drift" would silently degrade
+to "always green". Tier 2 additionally guards on `MXL_CONFORMANCE_TWO_DAEMON=1`
+plus the fixture coordinates (`MXL_CONFORMANCE_ROOM` / `_TARGET_AGENT` / `_TOOL`),
+so the cheap single-daemon tiers run even before the two-daemon bring-up lands.
+
+The suite is **excluded from `pnpm test`** (via `vitest.config.ts`) so the fast
+suite stays daemon-free. CI: `.github/workflows/conformance.yml`; bring-up:
+`scripts/conformance/`.

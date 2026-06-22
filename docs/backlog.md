@@ -4,7 +4,7 @@ Derived from [`mx-agent-tool-fabric-design.md`](./mx-agent-tool-fabric-design.md
 
 | | |
 |---|---|
-| Status | Active — M0 in progress; GitHub issues live in `kortiene/mx-loom` (T001–T005 delivered) |
+| Status | Active — M0 in progress; GitHub issues live in `kortiene/mx-loom` (T001–T007 delivered; T008 open) |
 | Target repo | `kortiene/mx-loom` — this repo (branded `mx-loom`); a fresh repo, so issue numbering starts clean |
 | ID scheme | Local `T###` IDs for stable dependency refs; real GitHub numbers assigned at `gh issue create` time |
 | Estimate scale | T-shirt — **S** ≈ ½–1d · **M** ≈ 1–2d · **L** ≈ 3–5d |
@@ -134,8 +134,8 @@ M6                        ▼
 - **Scope:** Add `.mx-agent-version` file; document the pin-bump policy (conformance must pass before bump).
 - **Out of scope:** The conformance suite itself (T007).
 - **Acceptance criteria:**
-  - [ ] `.mx-agent-version` records `v0.2.1`
-  - [ ] Pin-bump policy documented
+  - [x] `.mx-agent-version` records `v0.2.1`
+  - [x] Pin-bump policy documented — `docs/mx-agent-pin.md`; T007 wired in as the executable gate.
 - **Dependencies:** none
 
 #### T007 · contract: conformance suite gating the version pin
@@ -144,8 +144,9 @@ M6                        ▼
 - **Scope:** Automated suite asserting `agent.register` / `agent.list` / `call.start` round-trips; CI job; red on surface drift.
 - **Out of scope:** Per-runtime certification (T601).
 - **Acceptance criteria:**
-  - [ ] Suite runs in CI against a live daemon
-  - [ ] Green on v0.2.1; documented as the pin-bump gate
+  - [x] Suite runs in CI against a live daemon — `.github/workflows/conformance.yml` (`live` job, `MXL_CONFORMANCE=1` → fail-not-skip); suite at `packages/toolbelt/test/conformance/`, run via `pnpm --filter @mx-loom/toolbelt test:conformance`.
+  - [x] Green on v0.2.1; documented as the pin-bump gate — Tier 0 (pin identity) + Tier 1 (`agent.register` / `agent.list` + closed error taxonomy + secret boundary) verified green against a live `v0.2.1` daemon; gate wired in `docs/mx-agent-pin.md` + the toolbelt README.
+- **Notes:** Tier 2 (`call.start` delegation) is implemented (`delegate.conformance.test.ts`) and staged behind `MXL_CONFORMANCE_TWO_DAEMON=1` + the two-daemon bring-up (`scripts/conformance/bootstrap-daemon-b.sh`); it round-trips green once the two-daemon CI fixture (second daemon + mutual trust + minimal allow-policy) is provisioned (release-binary/homeserver provenance — see the spec Risks #2/#3). Throwaway receiver policy fixture (`scripts/conformance/policy.b.toml`) to converge on T112 later.
 - **Dependencies:** blocked-by T004, T006
 
 #### T008 · toolbelt: secret-boundary guard (no secret crosses Boundary A)
