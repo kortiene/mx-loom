@@ -1,3 +1,4 @@
 packages:
   - adw_sdlc
-  # mx-loom product packages will be added under packages/* as they land (backlog M0+).
+  - packages/*
+
