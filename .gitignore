@@ -21,3 +21,6 @@ coverage/
 # Logs / OS cruft
 *.log
 .DS_Store
+
+# adw_sdlc per-run workspaces (created at the repo root: agents/<adw_id>/)
+/agents/
