@@ -4,7 +4,7 @@ Derived from [`mx-agent-tool-fabric-design.md`](./mx-agent-tool-fabric-design.md
 
 | | |
 |---|---|
-| Status | Draft for review — **no GitHub issues created yet** |
+| Status | Active — M0 in progress; GitHub issues live in `kortiene/mx-loom` (T001–T004 delivered) |
 | Target repo | `kortiene/mx-loom` — this repo (branded `mx-loom`); a fresh repo, so issue numbering starts clean |
 | ID scheme | Local `T###` IDs for stable dependency refs; real GitHub numbers assigned at `gh issue create` time |
 | Estimate scale | T-shirt — **S** ≈ ½–1d · **M** ≈ 1–2d · **L** ≈ 3–5d |
@@ -110,10 +110,11 @@ M6                        ▼
 - **Scope:** Transport selector, ret/backoff policy, the public client interface all callers use, removal of the fail-loud stub.
 - **Out of scope:** Tools (M1).
 - **Acceptance criteria:**
-  - [ ] `app/src/sdk` exports a working client (no throw)
-  - [ ] Falls back to CLI when the socket is absent
-  - [ ] Unit + integration tests pass
-- **Dependencies:** blocked-by T002, T003
+  - [x] `@mx-loom/toolbelt` exports a working unified client (`MxClient` + `createClient`, no throw); the literal `app/src/sdk` stub removal is a cross-repo follow-up in `kortiene/mx-agency#37` (OQ #5: mx-loom is the standalone package mx-agency consumes)
+  - [x] Falls back to CLI when the socket is absent (auto transport: absent-socket fast-path + `not_running`-only failover)
+  - [x] Unit + integration tests pass (`client.unit.test.ts`, `retry.test.ts`, `guards.test.ts`, `mxclient.integration.test.ts`; live `daemon.status` round-trips through `createClient()`)
+- **Dependencies:** blocked-by T002, T003 · **unblocks T005, T007, T008, T101**
+- **Note:** the credential-shaped-arg guard was hoisted to `src/guards.ts` so it now runs on **both** transports (closing the IPC-path gap where `invalid_args` was never emitted); T008 hardens the deny-list + adds inbound result redaction on this shared seam.
 
 #### T005 · toolbelt: session model + agent registration
 `area/toolbelt` `type/feature` `P0` · **M** · M0

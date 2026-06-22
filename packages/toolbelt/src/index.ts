@@ -28,3 +28,13 @@ export { safeSubprocessEnv, BASE_ENV_ALLOW, ENV_DENY_PREFIXES } from './cli/env.
 export type { SafeSubprocessEnvOptions } from './cli/env.js';
 export { methodToArgv } from './cli/method-map.js';
 export type { ArgvPlan } from './cli/method-map.js';
+
+// Unified client (T004) — IPC primary, CLI fallback, behind one MxTransport.
+// `createClient()` is the single typed entry point all callers use.
+export { MxClient, createClient } from './client.js';
+export type { MxClientOptions, TransportPreference } from './client.js';
+export { DEFAULT_RETRY_POLICY, withRetry, backoffDelay } from './retry.js';
+export type { RetryPolicy, RetryDeps } from './retry.js';
+// Shared credential-shaped-arg guard (hoisted from the CLI client so it applies
+// on both transports; T008 hardens it further).
+export { assertNoCredentialShapedArgs, CREDENTIAL_KEY_RE, CREDENTIAL_VALUE_RE } from './guards.js';
