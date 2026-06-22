@@ -4,7 +4,7 @@ Derived from [`mx-agent-tool-fabric-design.md`](./mx-agent-tool-fabric-design.md
 
 | | |
 |---|---|
-| Status | Active — M0 in progress; GitHub issues live in `kortiene/mx-loom` (T001–T004 delivered) |
+| Status | Active — M0 in progress; GitHub issues live in `kortiene/mx-loom` (T001–T005 delivered) |
 | Target repo | `kortiene/mx-loom` — this repo (branded `mx-loom`); a fresh repo, so issue numbering starts clean |
 | ID scheme | Local `T###` IDs for stable dependency refs; real GitHub numbers assigned at `gh issue create` time |
 | Estimate scale | T-shirt — **S** ≈ ½–1d · **M** ≈ 1–2d · **L** ≈ 3–5d |
@@ -122,10 +122,11 @@ M6                        ▼
 - **Scope:** Session lifecycle; `agent.register` on start; heartbeat/liveness; thread `correlation_id` onto every call.
 - **Out of scope:** Multi-tenant scoping (M5).
 - **Acceptance criteria:**
-  - [ ] Opening a session registers an agent visible via `agent.list`
-  - [ ] Heartbeat keeps liveness `active`; session close deregisters/goes stale
-  - [ ] `correlation_id` present on all outbound calls
-- **Dependencies:** blocked-by T004
+  - [x] Opening a session registers an agent visible via `agent.list`
+  - [x] Heartbeat keeps liveness `active`; session close deregisters/goes stale
+  - [x] `correlation_id` present on all outbound calls
+- **Dependencies:** blocked-by T004 · **unblocks T302** (`task.watch` resume), **T501** (tenant=room scoping)
+- **Status:** Landed (`packages/toolbelt`: `openSession`/`MxSession`, `heartbeat.ts`, `correlation.ts`, `agent-state.ts`). Gated defaults pending a live v0.2.1 check: heartbeat refresh = idempotent re-`agent.register`; deregister = decay (no method); `correlation_id` param propagation off. Heartbeat interval defaults to 15 s until the staleness window is recorded.
 
 #### T006 · contract: pin mx-agent v0.2.1 (#36)
 `area/contract` `type/chore` `P0` · **S** · M0
