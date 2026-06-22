@@ -24,7 +24,14 @@ export type { TransportErrorCode } from './transport.js';
 // CLI fallback transport (T003) — one-shot `mx-agent … --json`.
 export { CliClient } from './cli/client.js';
 export type { CliClientOptions } from './cli/client.js';
-export { safeSubprocessEnv, BASE_ENV_ALLOW, ENV_DENY_PREFIXES } from './cli/env.js';
+export {
+  safeSubprocessEnv,
+  isDeniedEnvKey,
+  BASE_ENV_ALLOW,
+  ENV_DENY_PREFIXES,
+  ENV_DENY_SUFFIXES,
+  ENV_DENY_EXACT,
+} from './cli/env.js';
 export type { SafeSubprocessEnvOptions } from './cli/env.js';
 export { methodToArgv } from './cli/method-map.js';
 export type { ArgvPlan } from './cli/method-map.js';
@@ -35,9 +42,17 @@ export { MxClient, createClient } from './client.js';
 export type { MxClientOptions, TransportPreference } from './client.js';
 export { DEFAULT_RETRY_POLICY, withRetry, backoffDelay } from './retry.js';
 export type { RetryPolicy, RetryDeps } from './retry.js';
-// Shared credential-shaped-arg guard (hoisted from the CLI client so it applies
-// on both transports; T008 hardens it further).
-export { assertNoCredentialShapedArgs, CREDENTIAL_KEY_RE, CREDENTIAL_VALUE_RE } from './guards.js';
+// Shared secret-boundary guards (T008). `assertNoCredentialShapedArgs` is the
+// hardened outbound arg scrubber (rejects credential-shaped args before dispatch
+// on both transports); `redactSecrets` is the symmetric inbound, defense-in-depth
+// result redaction applied on the MxClient.call seam.
+export {
+  assertNoCredentialShapedArgs,
+  redactSecrets,
+  REDACTION_PLACEHOLDER,
+  CREDENTIAL_KEY_RE,
+  CREDENTIAL_VALUE_RE,
+} from './guards.js';
 
 // Session model + agent registration (T005) — layered on MxClient.
 // `openSession()` registers an agent, runs a liveness heartbeat, and threads a

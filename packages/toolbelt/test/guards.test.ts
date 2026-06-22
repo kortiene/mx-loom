@@ -173,3 +173,133 @@ describe('assertNoCredentialShapedArgs', () => {
     expect((err as TransportError).code).toBe('invalid_args');
   });
 });
+
+// --- T008: hardened deny-list (allowlisted-secret shapes the rule names) ---
+
+describe('assertNoCredentialShapedArgs — hardened deny-list (T008)', () => {
+  const hardenedKeyCases: Array<[string, Record<string, unknown>]> = [
+    ['mx_agent_ prefix', { mx_agent_signing_key: 'x' }],
+    ['mx_agent_token', { mx_agent_token: 'x' }],
+    ['GH_TOKEN (exact)', { GH_TOKEN: 'x' }],
+    ['GITHUB_TOKEN (_token suffix)', { GITHUB_TOKEN: 'x' }],
+    ['gh_token', { gh_token: 'x' }],
+    ['access_token (_token suffix)', { access_token: 'x' }],
+    ['auth_token (_token suffix)', { auth_token: 'x' }],
+    ['refresh_token (_token suffix)', { refresh_token: 'x' }],
+    ['bare token (whole key)', { token: 'x' }],
+  ];
+
+  for (const [label, params] of hardenedKeyCases) {
+    it(`rejects credential-shaped key '${label}' as invalid_args`, () => {
+      const err = (() => {
+        try { assertNoCredentialShapedArgs(params); } catch (e) { return e; }
+      })();
+      expect(err).toBeInstanceOf(TransportError);
+      expect((err as TransportError).code).toBe('invalid_args');
+    });
+  }
+
+  // The crux of the refinement (Risk #1): delegation forwards arbitrary inner-tool
+  // args, many of which legitimately contain `token`. A boundaried `token` match
+  // must accept these count-shaped keys while still rejecting the credential ones.
+  // token_type, token_id, tokenize: start with "token" but neither the key NOR
+  // the boundaried `(?:^|[_-])token$` form matches — correctly not credential-shaped.
+  const falsePositiveAcceptKeys = [
+    'max_tokens',
+    'token_count',
+    'num_tokens',
+    'tokens_used',
+    'token_type',
+    'token_id',
+    'tokenize',
+  ];
+  for (const key of falsePositiveAcceptKeys) {
+    it(`accepts the non-credential pass-through key '${key}' (boundaried token match)`, () => {
+      expect(() => assertNoCredentialShapedArgs({ [key]: 5 })).not.toThrow();
+      expect(CREDENTIAL_KEY_RE.test(key)).toBe(false);
+    });
+  }
+
+  const hardenedValueCases: Array<[string, unknown]> = [
+    ['sk-ant- (Anthropic)', { x: 'sk-ant-api03-FAKEFAKEFAKEFAKE' }],
+    ['sk- bounded (OpenAI)', { x: 'sk-abcdefghij1234567890ABCDEFGH' }],
+    ['AKIA… (AWS access-key id)', { x: 'AKIAIOSFODNN7EXAMPLE' }],
+    ['PEM private-key header', { x: '-----BEGIN RSA PRIVATE KEY-----\nMIIE...' }],
+    ['PEM (no algorithm)', { x: '-----BEGIN PRIVATE KEY-----\nMIIE...' }],
+    ['nested AWS key in array', { items: ['ok', 'AKIAIOSFODNN7EXAMPLE'] }],
+  ];
+
+  for (const [label, params] of hardenedValueCases) {
+    it(`rejects credential-shaped value (${label}) as invalid_args`, () => {
+      const err = (() => {
+        try { assertNoCredentialShapedArgs(params); } catch (e) { return e; }
+      })();
+      expect(err).toBeInstanceOf(TransportError);
+      expect((err as TransportError).code).toBe('invalid_args');
+    });
+  }
+
+  // Value near-misses the anchored / bounded patterns must NOT catch.
+  it('accepts a short sk- value (below the bounded length, not OpenAI-key shaped)', () => {
+    expect(() => assertNoCredentialShapedArgs({ note: 'sk-foo' })).not.toThrow();
+    expect(() => assertNoCredentialShapedArgs({ id: 'sk-12345' })).not.toThrow();
+  });
+
+  it('accepts an AKIA-prefixed value that is too short to be an access-key id', () => {
+    expect(() => assertNoCredentialShapedArgs({ code: 'AKIASHORT' })).not.toThrow();
+  });
+
+  it('accepts a value that merely contains a PEM header mid-string (anchored ^)', () => {
+    expect(() => assertNoCredentialShapedArgs({ doc: 'paste -----BEGIN PRIVATE KEY----- here' })).not.toThrow();
+  });
+
+  it('hardened-value rejection names the path, never the value', () => {
+    const secret = 'sk-ant-MUST_NOT_APPEAR_IN_MESSAGE';
+    try {
+      assertNoCredentialShapedArgs({ outer: { provider_arg: secret } });
+      throw new Error('should have thrown');
+    } catch (e) {
+      const msg = (e as TransportError).message;
+      expect(msg).toContain('$.outer.provider_arg');
+      expect(msg).not.toContain(secret);
+    }
+  });
+
+  it('hardened-key rejection names the key, never the value', () => {
+    const secret = 'fake-gh-token-value-must-not-appear';
+    try {
+      assertNoCredentialShapedArgs({ GH_TOKEN: secret });
+      throw new Error('should have thrown');
+    } catch (e) {
+      const msg = (e as TransportError).message;
+      expect(msg).toContain('GH_TOKEN');
+      expect(msg).not.toContain(secret);
+    }
+  });
+
+  // Pin the hardened patterns directly against the exported regex constants so
+  // any future refactor that loosens them shows up as a test failure here.
+  it('CREDENTIAL_KEY_RE directly matches the hardened key shapes the rule names', () => {
+    expect(CREDENTIAL_KEY_RE.test('GITHUB_TOKEN')).toBe(true);
+    expect(CREDENTIAL_KEY_RE.test('refresh_token')).toBe(true);
+    expect(CREDENTIAL_KEY_RE.test('mx_agent_signing_key')).toBe(true);
+    expect(CREDENTIAL_KEY_RE.test('GH_TOKEN')).toBe(true);
+    // Boundaried: count-shaped keys must NOT match.
+    expect(CREDENTIAL_KEY_RE.test('max_tokens')).toBe(false);
+    expect(CREDENTIAL_KEY_RE.test('token_count')).toBe(false);
+    expect(CREDENTIAL_KEY_RE.test('token_type')).toBe(false);
+    expect(CREDENTIAL_KEY_RE.test('token_id')).toBe(false);
+  });
+
+  it('CREDENTIAL_VALUE_RE directly matches the hardened value prefixes the rule names', () => {
+    expect(CREDENTIAL_VALUE_RE.test('sk-ant-api03-FAKEFAKEFAKEFAKE')).toBe(true);
+    expect(CREDENTIAL_VALUE_RE.test('sk-abcdefghij1234567890ABCDEFGH')).toBe(true); // OpenAI bounded
+    expect(CREDENTIAL_VALUE_RE.test('AKIAIOSFODNN7EXAMPLE')).toBe(true);
+    expect(CREDENTIAL_VALUE_RE.test('-----BEGIN RSA PRIVATE KEY-----')).toBe(true);
+    expect(CREDENTIAL_VALUE_RE.test('-----BEGIN PRIVATE KEY-----')).toBe(true);
+    // Near-misses must NOT match.
+    expect(CREDENTIAL_VALUE_RE.test('sk-foo')).toBe(false);
+    expect(CREDENTIAL_VALUE_RE.test('AKIASHORT')).toBe(false);
+    expect(CREDENTIAL_VALUE_RE.test('not-a-real-key')).toBe(false);
+  });
+});

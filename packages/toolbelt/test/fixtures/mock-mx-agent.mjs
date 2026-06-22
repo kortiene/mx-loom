@@ -135,6 +135,13 @@ async function main() {
       process.stdout.write(JSON.stringify(process.argv.slice(2)));
       break;
 
+    case 'mock leak secret':
+      // Simulates a daemon bug: returns a token-shaped value in the result.
+      // MxClient inbound redaction (T008) must replace it with REDACTION_PLACEHOLDER
+      // before it reaches the caller. SYNTHETIC value — not a real token.
+      process.stdout.write(JSON.stringify({ result: { ok: true, leaked: 'ghp_FAKEleaked_by_daemon_bug_0000' } }));
+      break;
+
     case 'agent register':
       // Simulates daemon agent.register: params arrive via stdin (--input-json -).
       // Returns the synthetic AgentState wrapped in a {result} envelope so

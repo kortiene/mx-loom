@@ -20,6 +20,39 @@
 export const ENV_DENY_PREFIXES = ['MATRIX_', 'MX_AGENT_'] as const;
 
 /**
+ * Known-secret name **suffixes** denied even via `extraAllow` (T008). An env var
+ * whose name ends in one of these is a credential by convention
+ * (`GH_TOKEN`, `ANTHROPIC_API_KEY`, `AWS_SECRET_ACCESS_KEY`, `CLIENT_SECRET`),
+ * so it must never ride into a tool payload or the CLI child even if a caller
+ * explicitly allowlists it. Matched case-insensitively.
+ */
+export const ENV_DENY_SUFFIXES = ['_TOKEN', '_API_KEY', '_SECRET', '_ACCESS_KEY'] as const;
+
+/**
+ * Exact env var names denied even via `extraAllow` (T008). `GH_TOKEN` is the
+ * canonical case the secret-boundary rule names; it is also covered by the
+ * `_TOKEN` suffix, but is listed explicitly so the deny set documents it.
+ * Matched case-insensitively.
+ */
+export const ENV_DENY_EXACT = ['GH_TOKEN'] as const;
+
+/**
+ * Whether a key name is a known-secret shape that must never be forwarded to
+ * the CLI child — a deny prefix (`MATRIX_*` / `MX_AGENT_*`), a credential
+ * suffix ({@link ENV_DENY_SUFFIXES}), or an exact deny ({@link ENV_DENY_EXACT}).
+ *
+ * The toolbelt's own `MXL_*` namespace (e.g. `MXL_AGENT_BIN`) is non-secret and
+ * matches none of these shapes, so it stays forwardable via `extraAllow`.
+ */
+export function isDeniedEnvKey(key: string): boolean {
+  if (ENV_DENY_PREFIXES.some((prefix) => key.startsWith(prefix))) return true;
+  const upper = key.toUpperCase();
+  if (ENV_DENY_EXACT.some((exact) => upper === exact)) return true;
+  if (ENV_DENY_SUFFIXES.some((suffix) => upper.endsWith(suffix))) return true;
+  return false;
+}
+
+/**
  * Minimal base allowlist: only what the mx-agent CLI needs to locate its
  * socket / on-disk state and run. Intentionally excludes every credential.
  *
@@ -47,25 +80,24 @@ export const BASE_ENV_ALLOW = [
 export interface SafeSubprocessEnvOptions {
   /** Parent environment to read from. Default: `process.env`. Injectable for tests. */
   source?: Record<string, string | undefined>;
-  /** Extra NON-secret keys to forward; deny-prefixed keys are dropped even here. */
+  /** Extra NON-secret keys to forward; known-secret-shaped keys are dropped even here. */
   extraAllow?: readonly string[];
 }
 
 /**
  * Build the allowlist environment for the mx-agent CLI child. Deny-by-default:
  * starts from an empty object and copies only allowlisted keys that are present
- * in `source`. Any key matching {@link ENV_DENY_PREFIXES} is never copied, even
- * when explicitly requested via `extraAllow`.
+ * in `source`. Any key that is a known-secret shape ({@link isDeniedEnvKey} —
+ * deny prefix, credential suffix, or exact deny) is never copied, even when
+ * explicitly requested via `extraAllow`, so `extraAllow` can never re-admit a
+ * known secret into a tool payload or the child env (T008).
  */
 export function safeSubprocessEnv(options: SafeSubprocessEnvOptions = {}): Record<string, string> {
   const source = options.source ?? process.env;
 
-  const allow: string[] = [...BASE_ENV_ALLOW];
-  for (const key of options.extraAllow ?? []) {
-    if (!ENV_DENY_PREFIXES.some((prefix) => key.startsWith(prefix))) {
-      allow.push(key);
-    }
-  }
+  // Apply the known-secret deny check to BOTH the base allowlist and extraAllow,
+  // so a secret-shaped name is dropped no matter where it was requested.
+  const allow = [...BASE_ENV_ALLOW, ...(options.extraAllow ?? [])].filter((key) => !isDeniedEnvKey(key));
 
   const env: Record<string, string> = {};
   for (const key of allow) {
