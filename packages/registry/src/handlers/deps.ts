@@ -50,26 +50,50 @@ export interface HandlerDeps {
 }
 
 /**
- * The deps for `mx_delegate_tool` (T105 / #13) — {@link HandlerDeps} plus the two
- * things a delegation needs that the read handlers do not, both **injected** (not
+ * {@link HandlerDeps} plus the session **workspace room** a *mutating* verb is
+ * scoped to. The room comes from the binding's `MxSession` (T005), **never** from
+ * model input: the model must never name a Matrix room id (a coordination-plane
+ * detail, design §1/§7). A room-scoped handler fails fast (`internal`) rather than
+ * dispatch a room-less RPC when it is absent.
+ *
+ * Single-sources the `room` provenance contract for both `mx_delegate_tool` (T105,
+ * {@link DelegateDeps}) and `mx_run_command` (T106, {@link ExecDeps}) so the rule
+ * lives in exactly one place. The T103/T104 *read* handlers stay on the narrower
+ * {@link HandlerDeps} — they need no room.
+ */
+export interface RoomScopedDeps extends HandlerDeps {
+  /** The session/workspace room the verb is scoped to (from `MxSession`, NOT model input). */
+  readonly room?: string;
+}
+
+/**
+ * The deps for `mx_delegate_tool` (T105 / #13) — {@link RoomScopedDeps} plus the
+ * one extra thing a delegation needs that guarded exec does not, **injected** (not
  * model-facing):
  *
  *  - {@link validator} — a JSON Schema validator used to validate the caller's
  *    `args` against the *target tool's* published `input_schema` **before**
  *    dispatch (T105 AC 2). Defaults to a lazily-created Ajv validator, so the
  *    common path needs no wiring while tests can inject a fake.
- *  - {@link room} — the session/workspace room the delegation is scoped to. It
- *    comes from the binding's `MxSession` (T005), **never** from model input: the
- *    model must never name a Matrix room id (a coordination-plane detail, design
- *    §1/§7). The handler fails fast (`internal`) rather than dispatch a room-less
- *    `call.start` when it is absent.
  *
- * A dedicated interface (vs. widening {@link HandlerDeps}) keeps the T103/T104 read
- * handlers' deps minimal — they neither validate args nor need a room.
+ * The {@link RoomScopedDeps.room} provenance rule is identical to `mx_run_command`.
  */
-export interface DelegateDeps extends HandlerDeps {
+export interface DelegateDeps extends RoomScopedDeps {
   /** JSON Schema validator for dynamic args validation. Default: a lazily-created Ajv validator. */
   readonly validator?: SchemaValidator;
-  /** The session/workspace room the delegation is scoped to (from `MxSession`, NOT model input). */
-  readonly room?: string;
 }
+
+/**
+ * The deps for `mx_run_command` (T106 / #14) — {@link RoomScopedDeps} with **no**
+ * validator. Unlike delegation, guarded exec has a *fixed* input shape
+ * (`command` / `args` / `cwd`) — there is no dynamic per-tool `input_schema` to
+ * resolve and validate against — so the handler needs only the injected
+ * daemon-call seam, the clock seams, and the session {@link RoomScopedDeps.room}.
+ *
+ * The handler emits a signed `exec.start` request and faithfully surfaces the
+ * receiver's verdict; it performs **no** allowlist / `deny_args_regex` / `cwd` /
+ * sandbox check itself — all of that runs out-of-process on the receiving daemon
+ * (design §6 layer 4, §9). A type alias (not a fresh interface) because the exec
+ * seam is exactly the room-scoped seam, nothing more.
+ */
+export type ExecDeps = RoomScopedDeps;

@@ -4,7 +4,7 @@
 
 | | |
 |---|---|
-| Status | Active — M0 complete (T001–T008 delivered); M1 in progress — T101–T104 landed; see `docs/backlog.md` |
+| Status | Active — M0 complete (T001–T008 delivered); M1 in progress — T101–T106 landed (both delegation surfaces: named tools + guarded exec); see `docs/backlog.md` |
 | Date | 2026-06-22 |
 | Substrate pin | mx-agent `v0.2.1` (alpha) |
 | Closes | mx-agency #37 (SDK seam) |
@@ -116,7 +116,7 @@ The canonical registry is transport-neutral. **MCP is the universal binding** (e
 
 **Custom runners.** Anything that can (a) call a Unix socket and (b) accept a JSON-Schema tool list gets the tools for free — point it at the MCP server, or link the toolbelt library directly.
 
-> **Build rule:** never hand-author tools per runtime. One canonical descriptor set → generated MCP server + generated native shims (ADK `LongRunningFunctionTool`, Claude `canUseTool`) from day one. *(That canonical descriptor set is now a concrete, validated, enumerable module — `@mx-loom/registry` (T101). The discovery handlers `mxFindAgents` + `mxDescribeAgent` (T104) are live, and the primary delegation verb `mxDelegateTool` (T105) is live: a caller discovers a target, reads its published `ToolSchema.input_schema`, validates args against it, dispatches `call.start`, and receives a normalized envelope — the full delegation spine. The generators themselves are T109/T110, still to come.)*
+> **Build rule:** never hand-author tools per runtime. One canonical descriptor set → generated MCP server + generated native shims (ADK `LongRunningFunctionTool`, Claude `canUseTool`) from day one. *(That canonical descriptor set is now a concrete, validated, enumerable module — `@mx-loom/registry` (T101). The discovery handlers `mxFindAgents` + `mxDescribeAgent` (T104) are live, and **both** delegation surfaces of decision 2 are live: the primary verb `mxDelegateTool` (T105) — discover a target, read its published `ToolSchema.input_schema`, validate args, dispatch `call.start`, receive a normalized envelope — and its guarded-exec sibling `mxRunCommand` (T106), which dispatches `exec.start` for an allowlisted command and surfaces the receiver's verdict (`policy_denied` when not allowlisted) cleanly. So M1's "delegate a named tool *and* a guarded command" surface is code-complete at the handler layer. The guard stays entirely receiver-side (§6 layer 4 / §9). The generators themselves are T109/T110, still to come.)*
 
 ---
 
