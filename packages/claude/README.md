@@ -15,10 +15,147 @@ verbs in-process.
 > Claude-binding package, and **not** in the representation-neutral
 > `@mx-loom/registry`.
 
-T110 (the `tool()` / `createSdkMcpServer()` registration, `canUseTool` HITL
-wiring, and the hidden `mx_await_result` poll loop) will build on top of this.
+**T110 / #18** builds the **in-process shim** on top of this converter: the nine
+`mx_*` verbs registered via `createSdkMcpServer()` + `tool()`, the hidden
+`mx_await_result` poll loop, and the secret-free `canUseTool` HITL hook. See
+[The in-process binding (T110)](#the-in-process-binding-t110) below.
+
+## The in-process binding (T110)
+
+The Claude Agent SDK is the **default mx-agency runner**, and `createSdkMcpServer`
+is itself an *in-process MCP server* — so the toolbelt can run **inside** the agent
+process with no extra socket, no subprocess, and no stdio framing. T110 is that
+shim. It does two things generic MCP cannot:
+
+1. **In-process registration.** The nine `mx_*` verbs are defined with
+   `tool()` (Zod schemas from the T111 converter) and wrapped in
+   `createSdkMcpServer()` — **generated** by enumerating `CANONICAL_M1_TOOLS`,
+   never hand-authored. Adding a tenth descriptor surfaces it with no per-tool edit.
+2. **The cleanest HITL hook of the four runtimes.** A `canUseTool` callback
+   intercepts `mx_*` calls and presents a **secret-free** approval prompt — and the
+   `mx_await_result` poll loop is **hidden**, so a delegated call looks synchronous
+   to the model (one tool call → the terminal result).
+
+It **reuses** `@mx-loom/mcp` — `dispatchCall` (the name → registry-handler router),
+`createBindingContext`/`BindingContext` (the secret-free daemon/room/audit bundle),
+and `serializeToolResult` (`ToolResult` → MCP `CallToolResult`). The Claude shim
+adds only what is Claude-specific: the `tool()`/`createSdkMcpServer()` registration,
+the hidden poll loop, and the `canUseTool` hook.
+
+### Host usage
+
+The shim is a **library**, not an executable: it produces a `createSdkMcpServer`
+config and a `canUseTool` factory; the host (the mx-agency runner) composes them
+into its own `query()` call. T110 does not run the model.
+
+```ts
+import { query } from '@anthropic-ai/claude-agent-sdk';
+import { createBindingContext } from '@mx-loom/mcp';
+import { createMxToolServer, createMxCanUseTool, mxToolName } from '@mx-loom/claude';
+
+const ctx = await createBindingContext({ /* session / daemon / sessionOptions */ });
+const mx = createMxToolServer(ctx);                 // in-process MCP server config
+const canUseTool = createMxCanUseTool({             // the HITL hook
+  onApprovalRequest: async (summary) => {
+    // summary is secret-free: { tool, agent?, command?, args_summary, risk }
+    return /* your operator UI / CLI */ 'allow';
+  },
+});
+
+for await (const msg of query({
+  prompt,
+  options: {
+    mcpServers: { mx },
+    canUseTool,
+    allowedTools: [mxToolName('mx_delegate_tool'), mxToolName('mx_await_result')],
+  },
+})) {
+  /* … */
+}
+
+await ctx.close();
+```
+
+### Secret boundary — the shim is secret-free, the HITL hook is a *local gate, not authority*
+
+The shim lives in the adaptation plane and holds **no** secret: it never touches
+Matrix tokens, Ed25519 signing keys, provider keys, or `GH_TOKEN`, starts no child
+process, and reads no env var. Every daemon call routes through the toolbelt
+`MxClient`/`MxSession` on `ctx.daemon`, so the deny-by-default env allowlist,
+outbound credential-shaped-arg rejection, and inbound `redactSecrets` all stay in
+force, unmodified.
+
+`canUseTool` is a **requester-side local operator gate**, strictly weaker than the
+receiving daemon's authority:
+
+- A local **deny** short-circuits *before* the tool dispatches (the request is
+  never signed).
+- A local **allow** only permits the request to be *signed and dispatched*; the
+  receiving daemon still independently enforces trust / `policy.toml` / approval and
+  may still return `awaiting_approval` / `policy_denied`. Cognition produces a
+  signed *request*; it never grants itself authority. There is **no** model-facing
+  approve/deny surface — `onApprovalRequest` is wired to a human, never to the model.
+
+The `ApprovalSummary` is a **non-secret projection** — the verb, the target
+agent/command, an arg summary of **key names only** (credential-shaped keys
+dropped), and a risk hint. It never renders env, tokens, or raw arg *values*.
+
+### Hidden poll loop + `awaitApproval`
+
+Generic MCP surfaces a deferred `handle` and lets the model re-call
+`mx_await_result`; the shim hides that loop (`resolveDeferred`):
+
+- **`ok` / `denied` / `error`** → terminal, returned as-is.
+- **`running`** → resolved transparently by polling up to `resolveTimeoutMs`
+  (default 60 s, realised as a bounded short-poll cadence); if the budget elapses
+  still-`running`, the `running` envelope is returned (no unbounded block, never a
+  fabricated `timeout`) and the model can re-poll the still-registered
+  `mx_await_result` tool.
+- **`awaiting_approval`** → the receiving daemon's *out-of-process* human gate. By
+  **default** the envelope is surfaced immediately (handle + secret-free approval)
+  so the model fans out other work and resolves later. Opt in with
+  `createMxToolServer(ctx, { awaitApproval: true })` to block up to
+  `resolveTimeoutMs` for a single blocking call.
+
+### Namespaced tool names + audit
+
+`createSdkMcpServer({ name: 'mx', … })` surfaces each verb to the model as
+`mcp__mx__<verb>` (the cosmetic double-`mx` is deliberate). Use `mxToolName(verb)`
+to compute the namespaced name for `allowedTools`; the `canUseTool` hook matches it
+internally. The shim's result-return point is the single place a T113 `withAudit`
+tap is applied **once** (best-effort, `NullAuditSink` by default, independent of the
+MCP server's own tap); the live-Postgres path is gated by `MXL_AUDIT_PG=1` and
+asserted end-to-end by T114.
 
 ## Public API
+
+### T110 — the in-process shim
+
+```ts
+import {
+  createMxToolServer,   // (ctx, opts?) => McpSdkServerConfigWithInstance
+  createMxCanUseTool,   // (opts) => CanUseTool   (the HITL hook)
+  wrapCanUseTool,       // (existing, opts) => CanUseTool   (compose with a host hook)
+  mxToolName,           // (verb, serverName?) => `mcp__<server>__<verb>`
+  resolveDeferred,      // the hidden-poll-loop disposition policy
+  type ApprovalSummary,
+  type CreateMxToolServerOptions,
+  type CreateMxCanUseToolOptions,
+} from '@mx-loom/claude';
+```
+
+- **`createMxToolServer(ctx, opts?)`** — enumerate `CANONICAL_M1_TOOLS` → `tool()[]`
+  → `createSdkMcpServer`. Options: `name` / `version`, `resolveTimeoutMs`,
+  `awaitApproval`, `auditTap`. Throws `JsonSchemaConversionError` at build time if a
+  descriptor schema drifts outside the T111 subset (fail-closed).
+- **`createMxCanUseTool(opts)`** — the `canUseTool` callback. `onApprovalRequest` is
+  required; `shouldPrompt` defaults to prompting for `mx_delegate_tool` /
+  `mx_run_command` and auto-allowing the read/observe verbs; `serverName` /
+  `fallback` configure scope-matching and composition.
+- **`wrapCanUseTool(existing, opts)`** — gate `mx_*` here, delegate everything else
+  to a host's existing `canUseTool`.
+
+### T111 — the JSON Schema → Zod converter
 
 ```ts
 import {
