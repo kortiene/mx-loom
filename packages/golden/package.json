@@ -1,0 +1,32 @@
+{
+  "name": "@mx-loom/golden",
+  "version": "0.0.0",
+  "private": true,
+  "license": "Apache-2.0",
+  "description": "mx-loom GOLDEN end-to-end test (T114, the M1 exit gate). The one test that exercises every boundary: a scripted Claude-SDK-shaped cognition delegates a named tool AND a guarded command to a second registered agent across a workspace room, hits the receiver's approval gate, an out-of-band operator decides, the result returns, and the audit rows land — run through BOTH bindings (the @mx-loom/mcp server and the @mx-loom/claude in-process shim) against the same live two-daemon golden fixture. Test-only: nothing is exported for downstream consumption.",
+  "type": "module",
+  "engines": {
+    "node": ">=20.19"
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "test:e2e": "vitest run --config vitest.e2e.config.ts"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.29.0",
+    "@mx-loom/audit": "workspace:*",
+    "@mx-loom/claude": "workspace:*",
+    "@mx-loom/mcp": "workspace:*",
+    "@mx-loom/registry": "workspace:*",
+    "@mx-loom/toolbelt": "workspace:*"
+  },
+  "devDependencies": {
+    "@anthropic-ai/claude-agent-sdk": "^0.3.183",
+    "@types/node": "^22.10.0",
+    "@types/pg": "^8.11.10",
+    "pg": "^8.13.1",
+    "typescript": "^5.9.3",
+    "vitest": "^4.1.8"
+  }
+}

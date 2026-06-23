@@ -30,11 +30,18 @@ DENIED_TOOL="${MXL_CONFORMANCE_DENIED_TOOL:-deploy@1.0.0}" # B publishes + polic
 # `policy.b.toml` they are inert no-ops, as it carries none of those placeholders).
 POLICY_FIXTURE="${POLICY_FIXTURE:-policy.b.toml}"
 # Golden-fixture (policy.golden.toml) substitution coordinates — see
-# scripts/conformance/README.md "golden-test policy (T112)". The receiver-side
-# registration of the approval tool + exec-enable and the export of the
-# MXL_CONFORMANCE_APPROVAL_* coordinates land with the golden bring-up (T114);
-# here we only fill the fixture so it LOADS (AC 1).
-APPROVAL_TOOL="${MXL_CONFORMANCE_APPROVAL_TOOL:-deploy@1.0.0}"     # high-risk, approval-gated tool
+# scripts/conformance/README.md "golden-test policy (T112)". T114 completes the
+# golden bring-up: the approval tool is registered as a published tool on B (below),
+# guarded exec is enabled, and the MXL_CONFORMANCE_APPROVAL_* / _ALLOWED_COMMAND /
+# _ALLOW_CWD coordinates are emit_output-ed for the golden e2e suite + the staged
+# T112 AC 2 tests.
+#
+# @@APPROVAL_TOOL@@ is the high-risk, approval-gated NAMED tool — it must be a name
+# DISTINCT from both @@ALLOW_TOOL@@ (ungated) and the deny-by-default tool, since the
+# golden policy lists @@ALLOW_TOOL@@ + @@APPROVAL_TOOL@@ in `[[allow]]` and the deny
+# tool is deliberately ABSENT (deny-by-default). Default `release@1.0.0` so it never
+# collides with the `deploy@1.0.0` deny tool.
+APPROVAL_TOOL="${MXL_CONFORMANCE_APPROVAL_TOOL:-release@1.0.0}"    # high-risk, approval-gated named tool
 ALLOWED_COMMAND="${MXL_CONFORMANCE_ALLOWED_COMMAND:-echo}"         # the one allowlisted command
 ALLOW_CWD="${MXL_CONFORMANCE_ALLOW_CWD:-$CONF_STATE_DIR/b/data}"   # cwd the command may run in
 SANDBOX_BACKEND="${MXL_CONFORMANCE_SANDBOX_BACKEND:-bubblewrap}"   # tight sandbox backend
@@ -92,8 +99,22 @@ if grep -qE '@@[A-Z_]+@@' "$B_POLICY"; then
 fi
 log "loaded receiver policy at $B_POLICY (fixture=$POLICY_FIXTURE allow=$TOOL deny=$DENIED_TOOL)"
 
+# B publishes the ungated tool + the deny-by-default tool. Under the golden
+# fixture it ALSO publishes the approval-gated tool (T114) so the
+# `requires_approval=true` branch is reachable — guarding that it is a distinct
+# name from the ungated and deny tools (the policy lists allow+approval; deny is
+# deny-by-default and must NOT be published-and-allowed).
+REG_TOOL_ARGS=(--tool "$TOOL" --tool "$DENIED_TOOL")
+if [ "$POLICY_FIXTURE" = "policy.golden.toml" ]; then
+  if [ "$APPROVAL_TOOL" = "$TOOL" ] || [ "$APPROVAL_TOOL" = "$DENIED_TOOL" ]; then
+    die "golden bring-up: MXL_CONFORMANCE_APPROVAL_TOOL ('$APPROVAL_TOOL') must differ from \
+the allowed tool ('$TOOL') and the deny tool ('$DENIED_TOOL') — the golden policy lists allow+approval, \
+and the deny tool must stay deny-by-default."
+  fi
+  REG_TOOL_ARGS+=(--tool "$APPROVAL_TOOL")
+fi
 REG_JSON="$(mx-agent agent register --room "$A_ROOM" --kind tool-runner \
-  --tool "$TOOL" --tool "$DENIED_TOOL" --json)" || die "agent.register (B) failed"
+  "${REG_TOOL_ARGS[@]}" --json)" || die "agent.register (B) failed"
 B_AGENT="$(printf '%s' "$REG_JSON" | sed -n 's/.*"agent_id"[: ]*"\([^"]*\)".*/\1/p')"
 [ -n "$B_AGENT" ] || die "could not parse agent_id from B's agent.register output"
 
@@ -113,16 +134,35 @@ emit_output agent "$B_AGENT"
 emit_output tool "$TOOL"
 emit_output denied_tool "$DENIED_TOOL"
 
-# When the golden fixture is active, export the coordinates its specific test
-# suite (policy-golden.conformance.test.ts) reads. MXL_CONFORMANCE_GOLDEN_POLICY=1
-# tells the harness the golden fixture is loaded (not the throwaway policy.b.toml).
-# MXL_CONFORMANCE_APPROVAL_GATED_TOOL is the alias await-result.conformance.test.ts
-# reads for its AC 2 (awaiting_approval → ok|denied) test. Registration of the
-# approval tool as a published tool on B lands with the golden bring-up (T114).
+# When the golden fixture is active, complete the golden bring-up (T114): enable
+# guarded exec for the allowlisted command, then export every coordinate the golden
+# e2e suite (@mx-loom/golden) and the staged T112/T113 tests read.
+#   MXL_CONFORMANCE_GOLDEN_POLICY=1     — the golden fixture is loaded (not policy.b.toml).
+#   MXL_CONFORMANCE_APPROVAL_TOOL       — the approval-gated named tool (now PUBLISHED above).
+#   MXL_CONFORMANCE_APPROVAL_GATED_TOOL — alias await-result.conformance.test.ts reads (AC 2).
+#   MXL_CONFORMANCE_ALLOWED_COMMAND     — the one allowlisted, approval-gated guarded command.
+#   MXL_CONFORMANCE_ALLOW_CWD           — the cwd that command may run in.
 if [ "$POLICY_FIXTURE" = "policy.golden.toml" ]; then
+  # Guarded exec ships DISABLED (design §6 L4). The `[exec]` block in the loaded
+  # policy is the receiver-side enable; whether a separate daemon toggle is also
+  # required is UNVERIFIED (spec OQ #5) — attempt it best-effort with a localized
+  # command and warn (never die) on a spelling miss, so the golden test surfaces the
+  # real behavior RED rather than the bring-up failing on an unpinned subcommand.
+  EXEC_ENABLE_CMD=(mx-agent exec enable)   # UNVERIFIED — pin/correct at AC time (spec OQ #5)
+  if "${EXEC_ENABLE_CMD[@]}" >/dev/null 2>&1; then
+    log "guarded exec enabled on daemon B for '$ALLOWED_COMMAND'"
+  else
+    log "WARN: '${EXEC_ENABLE_CMD[*]}' not available/needed (UNVERIFIED, spec OQ #5) — \
+relying on the policy [exec] block; if exec is not actually enabled, T114 S6/S7 fail RED (the forcing function)."
+  fi
+
   emit_output golden_policy "1"
+  emit_output approval_tool "$APPROVAL_TOOL"
   emit_output approval_gated_tool "$APPROVAL_TOOL"
-  log "golden policy active — MXL_CONFORMANCE_GOLDEN_POLICY=1 approval_tool=$APPROVAL_TOOL"
+  emit_output allowed_command "$ALLOWED_COMMAND"
+  emit_output allow_cwd "$ALLOW_CWD"
+  log "golden policy active — MXL_CONFORMANCE_GOLDEN_POLICY=1 approval_tool=$APPROVAL_TOOL \
+allowed_command=$ALLOWED_COMMAND allow_cwd=$ALLOW_CWD"
 fi
 
 log "daemon B ready — agent=$B_AGENT tool=$TOOL denied=$DENIED_TOOL"

@@ -13,7 +13,8 @@ only issues signed requests and observes the daemon's verdict.
 | 0 — pin identity | daemon A | `bootstrap-daemon-a.sh` | `MXL_CONFORMANCE_SOCKET` |
 | 1 — register/list/errors | daemon A | `bootstrap-daemon-a.sh` | `MXL_CONFORMANCE_SOCKET` |
 | 2 — `call.start` delegation | daemons A **and** B | `+ bootstrap-daemon-b.sh` | `MXL_CONFORMANCE_ROOM`, `MXL_CONFORMANCE_TARGET_AGENT`, `MXL_CONFORMANCE_TOOL`, `MXL_CONFORMANCE_DENIED_TOOL` |
-| 2 (golden) — `policy.golden.toml` enforcement | daemons A **and** B with golden fixture | `bootstrap-daemon-b.sh` + `POLICY_FIXTURE=policy.golden.toml` | above + `MXL_CONFORMANCE_GOLDEN_POLICY=1`, `MXL_CONFORMANCE_ALLOWED_COMMAND`, `MXL_CONFORMANCE_APPROVAL_TOOL` |
+| 2 (golden) — `policy.golden.toml` enforcement | daemons A **and** B with golden fixture | `bootstrap-daemon-b.sh` + `POLICY_FIXTURE=policy.golden.toml` | above + `MXL_CONFORMANCE_GOLDEN_POLICY=1`, `MXL_CONFORMANCE_ALLOWED_COMMAND`, `MXL_CONFORMANCE_APPROVAL_TOOL`, `MXL_CONFORMANCE_ALLOW_CWD` |
+| 2 (golden e2e) — the **M1 exit gate** (T114) | golden fixture + `decide-approval.sh` operator | the golden bring-up above | the golden coordinates → `pnpm --filter @mx-loom/golden test:e2e` |
 
 `MXL_CONFORMANCE=1` (and, for Tier 2, `MXL_CONFORMANCE_TWO_DAEMON=1`) flips the
 suite from *skip-when-no-daemon* to *fail-when-no-daemon* — see
@@ -34,10 +35,13 @@ Two receiver fixtures live here:
 
 `bootstrap-daemon-b.sh` chooses the fixture via **`POLICY_FIXTURE`** (default
 `policy.b.toml`, so the green Tier-2 gate is byte-identical). Set
-`POLICY_FIXTURE=policy.golden.toml` for the golden bring-up. The receiver-side
-registration of the approval tool + exec-enable and the export of the
-`MXL_CONFORMANCE_APPROVAL_*` coordinates land with the golden test (T114); the
-override here lets the fixture **load** (AC 1) on the pinned daemon today.
+`POLICY_FIXTURE=policy.golden.toml` for the golden bring-up. Under the golden
+fixture the bring-up now (T114) **registers the approval tool as a published tool**
+on daemon B, **enables guarded exec** for the allowlisted command (best-effort; see
+OQ #5 below), and **`emit_output`s** the full golden coordinate set
+(`golden_policy`, `approval_tool`/`approval_gated_tool`, `allowed_command`,
+`allow_cwd`) so the golden e2e suite (`@mx-loom/golden`) and the staged T112 AC 2
+tests have everything they need.
 
 **Substitution contract.** Every environment-specific value in the fixture is a
 `@@…@@` placeholder substituted at bring-up from throwaway synthetic values; the
@@ -47,7 +51,7 @@ from an env coordinate (defaults in parentheses):
 | Placeholder | Env coordinate | Meaning |
 |---|---|---|
 | `@@ALLOW_TOOL@@` | `MXL_CONFORMANCE_TOOL` (`run_tests@1.0.0`) | low-risk named tool — ungated happy path |
-| `@@APPROVAL_TOOL@@` | `MXL_CONFORMANCE_APPROVAL_TOOL` (`deploy@1.0.0`) | high-risk named tool — `requires_approval` |
+| `@@APPROVAL_TOOL@@` | `MXL_CONFORMANCE_APPROVAL_TOOL` (`release@1.0.0`) | high-risk named tool — `requires_approval`; must be DISTINCT from the deny tool (`deploy@1.0.0`) since the policy lists allow+approval and the deny tool stays deny-by-default |
 | `@@ALLOW_COMMAND@@` | `MXL_CONFORMANCE_ALLOWED_COMMAND` (`echo`) | the one allowlisted, approval-gated command |
 | `@@ALLOW_CWD@@` | `MXL_CONFORMANCE_ALLOW_CWD` (`$CONF_STATE_DIR/b/data`) | cwd the command may run in |
 | `@@SANDBOX_BACKEND@@` | `MXL_CONFORMANCE_SANDBOX_BACKEND` (`bubblewrap`) | tight sandbox backend (`bubblewrap`/`docker`/`podman`) |
@@ -74,6 +78,63 @@ staged behind `MXL_CONFORMANCE_TWO_DAEMON=1` until a live daemon is available.
 tokens, no Ed25519 keys, no provider keys, no `GH_TOKEN`, and no real room/agent
 ids — by construction (placeholders only). `network = "deny"` further bounds any
 run from exfiltrating outward.
+
+## Golden end-to-end (T114 / #22) — the M1 exit gate
+
+The golden e2e test (`packages/golden`, `@mx-loom/golden`) reuses the golden
+two-daemon bring-up plus one extra operator script. It is the one test that
+exercises every boundary: a scripted Claude-SDK cognition delegates a named tool
+**and** a guarded command to daemon B across the room → the receiver's approval gate
+→ an out-of-band operator decision → the result returns → the audit rows land — run
+through **both** bindings (`@mx-loom/mcp` and `@mx-loom/claude`).
+
+### `decide-approval.sh` — the out-of-band operator
+
+```
+decide-approval.sh <approve|deny> [--match <substr>]
+```
+
+Runs as **daemon B's operator** (B's isolated `XDG_RUNTIME_DIR`/`XDG_DATA_HOME`,
+exactly as `bootstrap-daemon-b.sh` does for `trust approve`) and issues
+`approval.decide` via the `mx-agent` CLI. It **never** touches any `@mx-loom/*`
+model-facing surface — `approval.decide` / `trust.*` / `policy.*` are operator
+authority and are structurally absent from the model tool set. The golden harness
+shells out to it at the exact moment a step is held, so the operator decision lives
+strictly **between the hold and the resolve** — the test stays deterministic (no
+guessing bot). `--match <tool-or-command-name>` targets the right pending request
+when several are in flight (e.g. approve `release@1.0.0`, deny it on the next leg).
+The CLI vocabulary (`approval list/approve/deny`) is localized at the top of the
+script so a wrong v0.2.1 spelling is a one-line fix (OQ #2); a wrong spelling, or no
+pending request within the budget, exits non-zero → the golden run goes **red**.
+
+### Running the gate
+
+```sh
+scripts/conformance/install-mx-agent.sh "$MX_AGENT_VERSION"
+# bring up daemon A (exports socket + room), then daemon B with the golden fixture
+# (exports agent + tool + denied_tool + approval_tool + allowed_command + allow_cwd):
+POLICY_FIXTURE=policy.golden.toml scripts/conformance/bootstrap-daemon-b.sh
+MXL_CONFORMANCE_TWO_DAEMON=1 \
+MXL_CONFORMANCE_GOLDEN_POLICY=1 \
+MXL_CONFORMANCE_ROOM=… MXL_CONFORMANCE_TARGET_AGENT=… \
+MXL_CONFORMANCE_TOOL=… MXL_CONFORMANCE_APPROVAL_TOOL=… \
+MXL_CONFORMANCE_DENIED_TOOL=… MXL_CONFORMANCE_ALLOWED_COMMAND=… MXL_CONFORMANCE_ALLOW_CWD=… \
+  pnpm --filter @mx-loom/golden test:e2e
+```
+
+The CI `golden` job (`.github/workflows/conformance.yml`, `workflow_dispatch` →
+`run_golden`) wires all of this from the bootstrap step outputs; `run_audit_pg` adds
+a Postgres service so the audit arm asserts the live `PostgresAuditSink` mirror too.
+The suite **skips cleanly** with no fixture and goes **red** (never silently green)
+when the fixture is demanded but unreachable.
+
+### OQ #5 — guarded-exec enable
+
+The policy `[exec]` block is the receiver-side enable; whether a separate daemon
+toggle is also required is **unverified**. `bootstrap-daemon-b.sh` attempts a
+localized `mx-agent exec enable` best-effort and warns (never dies) on a spelling
+miss — so the golden test surfaces the real behavior **red** (S6/S7) rather than the
+bring-up failing on an unpinned subcommand. Pin/correct it at the live round-trip.
 
 ## Provenance (the open decision — Risks #2 in the spec)
 
