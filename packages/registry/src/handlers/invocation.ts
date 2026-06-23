@@ -54,11 +54,23 @@ const MESSAGE_FOR_CODE: Readonly<Record<ErrorCode, string>> = {
 const UNRECOGNISED_MESSAGE = 'unrecognised invocation state';
 
 /**
+ * The fixed, **secret-free** phrase for an observed *cancelled* invocation (T108).
+ * Built from the state only, never from a daemon payload (consistent with
+ * {@link MESSAGE_FOR_CODE}).
+ */
+const CANCELLED_MESSAGE = 'the invocation was cancelled';
+
+/**
  * The coarse kind a (normalised) daemon state token maps to. A `fail` is split
  * into `denied` vs `error` later by the **mapped code's** set membership (spec
  * Open Question #7 — disposition follows the mapped code, not the state label).
+ *
+ * `cancelled` is its **own** terminal kind (T108): an observed cancellation is not
+ * a generic `fail` — it has a distinct, honest disposition (a clean `error`
+ * envelope with the {@link CANCELLED_MESSAGE}, NOT the misleading
+ * "unrecognised invocation state" default it degraded to before T108).
  */
-type StateKind = 'running' | 'awaiting_approval' | 'ok' | 'fail';
+type StateKind = 'running' | 'awaiting_approval' | 'ok' | 'fail' | 'cancelled';
 
 /**
  * Daemon invocation-state tokens (normalised: lowercased, non-alphanumerics
@@ -66,9 +78,17 @@ type StateKind = 'running' | 'awaiting_approval' | 'ok' | 'fail';
  * → the coarse {@link StateKind}. Authored against the design's named states
  * (§5); pinned to the verified v0.2.1 vocabulary at the two-daemon round-trip.
  *
- * `cancelled` is **deliberately absent** — a cancelled invocation is T108
- * (`mx_cancel`) territory; here it degrades to the safe `internal` fallback until
- * T108 pins its disposition.
+ * The `cancelled` family (`cancelled` / `canceled` / `aborted`) is its own terminal
+ * kind, resolved by T108 (`mx_cancel`). A cancelled invocation observed via
+ * `mx_await_result` now resolves to a clean terminal envelope (an honest
+ * `error` + {@link CANCELLED_MESSAGE}) instead of the misleading `internal`
+ * "unrecognised invocation state" fallback it degraded to before. **Conservative
+ * M1 disposition (spec Risk #1, Option B):** the closed nine-code error taxonomy
+ * (`errors.ts`) stays frozen — cancellation maps to the fault-set `internal` code
+ * with a dedicated, accurate message. A distinct `cancelled` error code (Option A)
+ * remains the documented future extension if the team chooses to grow the set; the
+ * only change needed then is the `errored('internal', …)` call in the `cancelled`
+ * switch branch below.
  */
 const INVOCATION_STATE_KIND: Readonly<Record<string, StateKind>> = {
   // In-flight / executing.
@@ -119,6 +139,10 @@ const INVOCATION_STATE_KIND: Readonly<Record<string, StateKind>> = {
   target_offline: 'fail',
   agent_offline: 'fail',
   unreachable: 'fail',
+  // Terminal cancellation (T108 `mx_cancel`) — its own kind, not a generic fail.
+  cancelled: 'cancelled',
+  canceled: 'cancelled',
+  aborted: 'cancelled',
 };
 
 // ---------------------------------------------------------------------------
@@ -290,6 +314,10 @@ export function invocationToResult(raw: unknown): ToolResult {
       return ok(resultOf(obj), audit_ref);
     case 'fail':
       return failureResult(failureCode(obj, token), audit_ref);
+    case 'cancelled':
+      // T108: an observed cancellation is a clean terminal `error` envelope with an
+      // honest message — never the misleading `internal` "unrecognised" default.
+      return errored('internal', CANCELLED_MESSAGE, audit_ref);
     default:
       // No recognised state token. A record carrying an explicit daemon error is
       // still a terminal failure; anything else is genuinely unrecognised.
@@ -346,6 +374,10 @@ export function callResponseToResult(raw: unknown): ToolResult {
       return ok(resultOf(obj), audit_ref);
     case 'fail':
       return failureResult(failureCode(obj, token), audit_ref);
+    case 'cancelled':
+      // T108: a cancelled reply (rare on an initial call.start/exec.start, but
+      // handled for parity) resolves to the same clean terminal `error` envelope.
+      return errored('internal', CANCELLED_MESSAGE, audit_ref);
     default: {
       // No recognised state token. Classify by signal, most-specific first:
       //  - an explicit error signal (`{ok:false}` / `error`) is a terminal failure;

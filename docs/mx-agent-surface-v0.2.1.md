@@ -19,7 +19,7 @@ surface-verification spike (#1) by exercising the **live daemon**, not just read
 | `daemon.status` | ✅ | `{running, pid, uptime_seconds, socket_path, version:"0.2.1", sync:{state,total_syncs,consecutive_failures,...}}` |
 | `auth login` / `auth status` | ✅ | `{logged_in:true, homeserver, user_id, device_id}` |
 | `workspace.create` | ✅ | `{room_id, encrypted, joined_members}` |
-| `workspace.status` | ✅ | `{room_id, canonical_alias, name, encrypted, joined_members, members[{user_id,display_name,membership}]}` |
+| `workspace.status` | ✅ | `{room_id, canonical_alias, name, encrypted, joined_members, members[{user_id,display_name,membership}]}` — **backs `mx_workspace_status` (T108)**, composed with `agent.list` for the registered MX agents (this is the *Matrix room* view, carrying no `AgentState`s). The raw `members[].user_id` list is deliberately projected **out** (T104 precedent); model-facing identities are the MX `agent_id`s. _Unrecorded: whether it **takes** a `room` arg or defaults to the daemon's current workspace — the handler passes `deps.room` when present and tolerates its absence._ |
 | `agent.register` | ✅ | full `AgentState` (below) |
 | `agent.list` | ✅ | `[{agent: AgentState, liveness:"active"\|"stale"\|"offline"}]` |
 | `agent.tools` | ✅ | `{agent_id, kind, status, capabilities[], tools[], schemas:[ToolSchema]}` |
@@ -55,7 +55,7 @@ revisit the dialect pin here and in `@mx-loom/registry`._
 | `call.start` (delegate named tool) | ◻️ flags confirmed · round-trip staged | conformance Tier 2 (`packages/toolbelt/test/conformance/delegate.conformance.test.ts`, T007) round-trips `CallRequest`→`CallResponse`; gated behind the two-daemon fixture (`MXL_CONFORMANCE_TWO_DAEMON=1`). Flip to ✅ once that fixture runs green in CI. |
 | `exec.start` (guarded command) | ◻️ flags confirmed | same; receiver-side policy/approval gate |
 | `task.create/update/list/graph` | ◻️ flags confirmed | `task create --room --title [--tool --arg/--input-json --exec --depends-on --blocks --assign --state]` — matches the DAG + signed-action model |
-| `share.file/diff/env` · `approval.decide` · `invocation.*` | ◻️ documented | exercise in the conformance suite (T007 / #7) with a two-daemon fixture |
+| `share.file/diff/env` · `approval.decide` · `invocation.*` | ◻️ documented | exercise in the conformance suite (T007 / #7) with a two-daemon fixture. **`invocation.get` backs `mx_await_result` (T103); `invocation.cancel` backs `mx_cancel` (T108)** — the cancel method/param name (`invocation_id`) + reply disposition (`{cancelled?, state?}`) are authored against the design (localised consts) and pinned at the two-daemon round-trip (a cancel needs an in-flight invocation). |
 
 ## CLI `--json` fallback transport (T003 / #3)
 

@@ -10,10 +10,11 @@ secret-free set of `mx_*` tool descriptors plus a fail-fast loader/validator.
 It now ships **three layers**: the descriptor model and registry loader/validator
 (T101), the normalized result-envelope + error taxonomy + idempotency contract
 (T102), and the handlers — `mx_await_result` (T103), `mx_find_agents` /
-`mx_describe_agent` (T104), `mx_delegate_tool` (T105), `mx_run_command` (T106), and
-`mx_share_context` / `mx_get_context` (T107) — all backed by an injected
-daemon-call seam so `@mx-loom/toolbelt` stays a `devDependency`. The remaining
-handlers (T108), the MCP binding (T109), the Claude shim (T110), and the JSON
+`mx_describe_agent` (T104), `mx_delegate_tool` (T105), `mx_run_command` (T106),
+`mx_share_context` / `mx_get_context` (T107), and `mx_cancel` /
+`mx_workspace_status` (T108) — all backed by an injected daemon-call seam so
+`@mx-loom/toolbelt` stays a `devDependency`. With T108 the **9-verb M1 model-facing
+surface is complete**; the MCP binding (T109), the Claude shim (T110), and the JSON
 Schema → Zod converter (T111) all *read* descriptors and *build envelopes* from
 here.
 
@@ -62,10 +63,11 @@ The validator runs, per descriptor: **structural** → **JSON Schema validity**
 
 ## The M1 descriptor set
 
-The **7 P0** verbs (design §8): `mx_find_agents`, `mx_describe_agent`,
-`mx_delegate_tool` *(deferred)*, `mx_run_command` *(deferred, guarded)*,
-`mx_await_result`, `mx_share_context`, `mx_get_context`. The P1 `mx_cancel` /
-`mx_workspace_status` land with their handlers in T108.
+The **9** M1 verbs (design §8): the 7 P0 verbs `mx_find_agents`,
+`mx_describe_agent`, `mx_delegate_tool` *(deferred)*, `mx_run_command`
+*(deferred, guarded)*, `mx_await_result`, `mx_share_context`, `mx_get_context`,
+plus the 2 P1 verbs `mx_cancel` and `mx_workspace_status` *(both sync)* added with
+their handlers in T108.
 
 **`mx_delegate_tool` has a dynamic inner schema.** Its `input_schema` is the
 *outer* envelope (`agent` / `tool` / `args`); `args` is an **open object**. The
@@ -479,6 +481,77 @@ const got = await mxGetContext({ context_id: shared.result.context_id }, deps);
 > `MXL_CONFORMANCE_TWO_DAEMON=1`. A new daemon code degrades to `internal`/`not_found`
 > (never the wrong code), never throws. Content-addressing makes a re-share naturally
 > idempotent, so no `idempotency_key` is added for M1.
+
+## The cancel + observe handlers (T108)
+
+`mx_cancel` + `mx_workspace_status` are the **2 P1 verbs** that complete the M1
+model-facing surface — the *coordinate* and *observe* halves of design §2's
+discover → delegate → coordinate → share → **observe** flow.
+
+```ts
+import { mxCancel, mxWorkspaceStatus } from '@mx-loom/registry';
+import { createClient } from '@mx-loom/toolbelt';
+
+const deps = { daemon: createClient() };                 // mx_cancel needs no room (handle-only)
+const cancelled = await mxCancel({ handle: 'inv_01HZ…' }, deps);
+//    ^ ok({ handle, cancelled, state? }, audit_ref) — terminal; denied/error on refusal/fault
+
+const wsDeps = { daemon: createClient(), room: session.room }; // room best-effort, from MxSession
+const ws = await mxWorkspaceStatus({}, wsDeps);
+//    ^ ok({ workspace, agents: AgentSummary[], project? }, EMPTY_AUDIT_REF)
+```
+
+- **`mx_cancel` — stop an in-flight invocation by its deferred handle.** A `sync`
+  mutating verb mapping to `invocation.cancel`. It uses plain `HandlerDeps`
+  (handle-only, like `mx_await_result` — the daemon derives the room from the
+  invocation record), takes **no `idempotency_key`** (cancelling is monotonic toward
+  a terminal `cancelled` state, so a re-issued cancel is a safe no-op), and returns a
+  terminal `ok({ handle, cancelled, state? })`: `cancelled: true` when the invocation
+  was running and is now cancelling/cancelled; `cancelled: false` (with a `state`
+  like `already_complete`) when there was nothing to cancel — still a non-error
+  success. It performs **no** authority check: it emits a *signed cancel* and
+  surfaces the receiver's verdict (an unknown handle → `not_found`; a refused
+  cross-agent cancel → `policy_denied` / `untrusted_key`; a transport fault per
+  `mapTransportError`). It cancels a single *invocation* handle — not a task or a
+  multi-step plan — and cannot release a held invocation.
+- **`mx_workspace_status` — "where am I / who is here / what project is this".** A
+  `sync` **local read** composing `workspace.status` (room/project metadata) with
+  `agent.list` (the registered MX agents). `workspace.status` is the primary read (a
+  fault is the verb's fault); `agent.list` is **tolerated** (a fault degrades to
+  `agents: []` — "no agents" is not an error). It uses `RoomScopedDeps` with the room
+  **best-effort** (a status read does not fail-fast on a missing room; the daemon may
+  default to its current workspace). Local reads ⇒ all-null `audit_ref`.
+- **The load-bearing redaction decision — the Matrix `members[]` is projected OUT.**
+  The verified `workspace.status` reply carries `members[{ user_id, display_name,
+  membership }]` — raw **Matrix user ids**. Following T104's precedent,
+  `mx_workspace_status` surfaces only the non-secret room metadata (`room_id` /
+  `name` / `canonical_alias` / `encrypted`) + the projected `agents` + the derived
+  `project`, and **never** the `members[].user_id` list. The model-facing identities
+  are the MX `agent_id`s from `agent.list`. The projector is
+  allowlist-by-construction (copies only named fields), so an upstream addition to
+  the `workspace.status` shape can never silently leak.
+- **Task DAG is out of scope (M3 / T301).** `mx_workspace_status` surfaces **agents
+  + project** and leaves a forward-compatible slot (the output is
+  `additionalProperties: true`) for a future `tasks` field — it does not populate it.
+- **The observe-path cancelled mapping (T108 resolves the `invocation.ts` TODO).** A
+  `cancelled` invocation observed via `mx_await_result` previously degraded to the
+  misleading `internal` "unrecognised invocation state" default. T108 makes the
+  cancelled family (`cancelled` / `canceled` / `aborted`) a recognised terminal kind
+  that resolves to a clean terminal `error` with the honest message "the invocation
+  was cancelled". **Conservative M1 disposition:** the closed nine-code error
+  taxonomy stays frozen (the code is the fault-set `internal`); a distinct
+  `cancelled` error code is the documented future extension. `mx_cancel`'s own
+  `ok({ cancelled: true })` already satisfies AC 1 regardless of this observe-path
+  polish.
+
+> **Staged at the round-trip.** `workspace.status` is **verified** (a single-daemon
+> conformance probe is feasible). `invocation.cancel` is "◻️ documented" and needs an
+> in-flight invocation (≥2 agents), so the cancel round-trip is staged behind
+> `MXL_CONFORMANCE_TWO_DAEMON=1` (the same gate as `call.start` / `exec.start`). The
+> `invocation.cancel` method/param name and reply disposition, and whether
+> `workspace.status` takes a `room` argument, are authored against the design now
+> (localised consts) and pinned at the live check. A new daemon code degrades to
+> `internal` (never the wrong code), never throws.
 
 ## Invariants
 

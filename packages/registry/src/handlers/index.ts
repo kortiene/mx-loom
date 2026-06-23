@@ -52,6 +52,21 @@ export { mxGetContext } from './get-context.js';
 export type { GetContextInput } from './get-context.js';
 export { contextResponseToResult } from './context-response.js';
 
+// The cancel + observe handlers (T108): `mx_cancel` (invocation.cancel → normalize
+// the narrow reply to a terminal `ok({ handle, cancelled, state? }, audit_ref)`) and
+// `mx_workspace_status` (workspace.status + agent.list → project the non-secret room
+// metadata + AgentSummary[] + project context, dropping the Matrix members[]). Both
+// `sync`. `mx_cancel` uses plain `HandlerDeps` (handle-only, like `mx_await_result`);
+// `mx_workspace_status` uses `RoomScopedDeps` with the room best-effort.
+export { mxCancel } from './cancel.js';
+export type { CancelInput, CancelResult } from './cancel.js';
+export { mxWorkspaceStatus } from './workspace-status.js';
+export type { WorkspaceStatusInput, WorkspaceStatusResult } from './workspace-status.js';
+
 // The pure agent-record projectors (non-secret subset) + their model-facing types.
 export { projectAgentSummary, projectAgentDetail, projectTools } from './agent-projection.js';
 export type { AgentSummary, AgentDetail, PublishedTool, AgentLiveness } from './agent-projection.js';
+
+// The pure workspace/project projectors (non-secret subset) for `mx_workspace_status`.
+export { projectWorkspaceMeta, deriveProject } from './workspace-projection.js';
+export type { WorkspaceMeta, ProjectContext } from './workspace-projection.js';

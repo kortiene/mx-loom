@@ -22,7 +22,13 @@
 import { type DenialCode, type ErrorCode, type FaultCode } from './errors.js';
 import { deepFreeze } from './freeze.js';
 
-/** The closed five-status set (design §4.2). No `cancelled` (T102 OQ #6 → T108). */
+/**
+ * The closed five-status set (design §4.2). There is **no** `cancelled` status:
+ * T108 (`mx_cancel`) resolved cancellation within these five — `mx_cancel`'s own
+ * acknowledgement is a terminal `ok({ cancelled })`, and an *observed* cancelled
+ * invocation maps to a clean terminal `error` (the conservative M1 disposition;
+ * see `handlers/invocation.ts`). The closed nine-code error taxonomy stays frozen.
+ */
 export type ToolStatus = 'ok' | 'running' | 'awaiting_approval' | 'denied' | 'error';
 
 /** A failure: a closed-set {@link ErrorCode} + a human-readable, **secret-free** message. */

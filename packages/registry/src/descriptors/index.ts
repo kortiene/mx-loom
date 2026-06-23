@@ -1,7 +1,8 @@
 /**
  * The canonical M1 descriptor set (design §8) — the static, frozen `mx_*` verbs
- * the Delegation MVP surfaces. T101 authors the **7 P0** verbs (Risk #7); the P1
- * `mx_cancel` / `mx_workspace_status` land with their handlers in T108.
+ * the Delegation MVP surfaces. T101 authored the **7 P0** verbs; T108 adds the
+ * **2 P1** verbs (`mx_cancel` / `mx_workspace_status`) alongside their handlers, so
+ * the canonical M1 model-facing set is now **9** tools.
  *
  * Metadata only — handler behavior is T104–T108.
  */
@@ -15,6 +16,8 @@ import { MX_RUN_COMMAND } from './run-command.js';
 import { MX_AWAIT_RESULT } from './await-result.js';
 import { MX_SHARE_CONTEXT } from './share-context.js';
 import { MX_GET_CONTEXT } from './get-context.js';
+import { MX_CANCEL } from './cancel.js';
+import { MX_WORKSPACE_STATUS } from './workspace-status.js';
 
 export {
   MX_FIND_AGENTS,
@@ -24,9 +27,12 @@ export {
   MX_AWAIT_RESULT,
   MX_SHARE_CONTEXT,
   MX_GET_CONTEXT,
+  MX_CANCEL,
+  MX_WORKSPACE_STATUS,
 };
 
-/** The canonical M1 (P0) descriptor set, in stable order. Frozen. */
+/** The canonical M1 descriptor set, in stable order. Frozen. The 7 P0 verbs (T101)
+ *  followed by the 2 P1 verbs (T108). */
 export const CANONICAL_M1_TOOLS: readonly ToolDescriptor[] = deepFreeze([
   MX_FIND_AGENTS,
   MX_DESCRIBE_AGENT,
@@ -35,4 +41,6 @@ export const CANONICAL_M1_TOOLS: readonly ToolDescriptor[] = deepFreeze([
   MX_AWAIT_RESULT,
   MX_SHARE_CONTEXT,
   MX_GET_CONTEXT,
+  MX_CANCEL,
+  MX_WORKSPACE_STATUS,
 ]);

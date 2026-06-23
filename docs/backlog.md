@@ -4,7 +4,7 @@ Derived from [`mx-agent-tool-fabric-design.md`](./mx-agent-tool-fabric-design.md
 
 | | |
 |---|---|
-| Status | Active — M0 complete; M1 in progress — T101–T107 landed (both delegation surfaces: named tools + guarded exec; plus the shared-context publish/fetch seam); GitHub issues live in `kortiene/mx-loom` |
+| Status | Active — M0 complete; M1 in progress — T101–T108 landed (both delegation surfaces: named tools + guarded exec; the shared-context publish/fetch seam; and the cancel + workspace-observe verbs — the **9-verb M1 model-facing surface is complete** at the handler layer); GitHub issues live in `kortiene/mx-loom` |
 | Target repo | `kortiene/mx-loom` — this repo (branded `mx-loom`); a fresh repo, so issue numbering starts clean |
 | ID scheme | Local `T###` IDs for stable dependency refs; real GitHub numbers assigned at `gh issue create` time |
 | Estimate scale | T-shirt — **S** ≈ ½–1d · **M** ≈ 1–2d · **L** ≈ 3–5d |
@@ -254,9 +254,10 @@ M6                        ▼
 - **Scope:** Cancel an in-flight invocation; report workspace agents/tasks/project.
 - **Out of scope:** Task DAG tools (M3).
 - **Acceptance criteria:**
-  - [ ] Cancelling a running handle transitions it to cancelled
-  - [ ] `mx_workspace_status` lists registered agents + project context
+  - [x] Cancelling a running handle transitions it to cancelled — `mxCancel` dispatches `invocation.cancel {invocation_id: handle}` and returns `ok({ handle, cancelled, state? }, audit_ref)`; `cancelled: true` is the running→cancelling transition, `cancelled: false` (+ `state`) the no-op success.
+  - [x] `mx_workspace_status` lists registered agents + project context — `mxWorkspaceStatus` composes `workspace.status` + `agent.list`, projecting the non-secret room metadata + `AgentSummary[]` + derived `project`.
 - **Dependencies:** blocked-by T102
+- **Status:** Landed (`packages/registry/src/descriptors/`: `cancel.ts` `MX_CANCEL`, `workspace-status.ts` `MX_WORKSPACE_STATUS`; `src/handlers/`: `cancel.ts` `mxCancel`, `workspace-status.ts` `mxWorkspaceStatus`, `workspace-projection.ts` the pure non-secret room/project projector; `invocation.ts` cancelled-state TODO resolved; `CANONICAL_M1_TOOLS` grows 7 → 9; barrel-exported from `src/index.ts`). Both `sync` verbs on the injected daemon-call seam (zero **runtime** toolbelt dep), envelopes built only through the T102 helpers, **never throw**. **Resolved decisions:** (#1 cancelled taxonomy) **Option B (conservative)** — the closed nine-code error taxonomy stays frozen; an *observed* cancelled invocation resolves to a clean terminal `error`/`internal` with the honest message "the invocation was cancelled" (a distinct `cancelled` code remains the documented Option-A future extension). AC 1 is satisfied by `mx_cancel`'s own `ok({ cancelled: true })` regardless. (#2) `mx_cancel` is **`sync`** and carries **no `idempotency_key`** (cancelling is monotonic/idempotent; T107's content-addressing reasoning). (#3) `mx_cancel` uses plain `HandlerDeps` (handle-only, like `mx_await_result` — the daemon derives the room); `mx_workspace_status` uses `RoomScopedDeps` with the room **best-effort** (no fail-fast). (#4) the Matrix `members[].user_id` list is deliberately **projected out** (T104 precedent) — model-facing identities are the MX `agent_id`s. (#5) Task DAG (`tasks`) is deferred to M3 (T301); the output leaves an additive forward-compatible slot. **Pending the round-trip:** `workspace.status` is **verified** (single-daemon probe feasible); `invocation.cancel` is "◻️ documented" — its method/param name + reply disposition staged behind `MXL_CONFORMANCE_TWO_DAEMON=1` (a new daemon code degrades to `internal`, never the wrong code). The comprehensive handler/security/conformance test suite lands in the dedicated tests phase.
 
 #### T109 · binding: MCP server generated from the canonical registry
 `area/mcp` `type/feature` `P0` · **L** · M1

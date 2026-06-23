@@ -30,6 +30,8 @@ describe('loadRegistry (T101 smoke)', () => {
       'mx_await_result',
       'mx_share_context',
       'mx_get_context',
+      'mx_cancel',
+      'mx_workspace_status',
     ]);
     expect(registry.has('mx_delegate_tool')).toBe(true);
     expect(registry.get('mx_delegate_tool')?.async_semantics).toBe('deferred');
@@ -48,7 +50,7 @@ describe('loadRegistry (T101 smoke)', () => {
       inputSchema: d.input_schema,
       deferred: d.async_semantics === 'deferred',
     }));
-    expect(tools).toHaveLength(7);
+    expect(tools).toHaveLength(9);
     expect(tools.every((t) => t.name.startsWith('mx_') && t.description.length > 0)).toBe(true);
   });
 

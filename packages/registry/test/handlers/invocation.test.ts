@@ -832,3 +832,52 @@ describe('classifyInvocation', () => {
     }
   });
 });
+
+// ---------------------------------------------------------------------------
+// Terminal cancellation states (T108) — resolved from the deliberate TODO
+//
+// Before T108 a `cancelled` invocation observed via mx_await_result fell through to
+// the misleading `internal` "unrecognised invocation state" default. T108 makes the
+// cancelled family a recognised terminal kind that resolves to a CLEAN terminal
+// `error` envelope with an honest message. Conservative M1 disposition (spec Risk
+// #1, Option B): the closed nine-code taxonomy stays frozen — the code is `internal`
+// (the fault-set member) with the dedicated "the invocation was cancelled" message,
+// NOT the "unrecognised" phrase. A distinct `cancelled` error code remains the
+// documented future extension (Option A).
+// ---------------------------------------------------------------------------
+
+describe('invocationToResult — cancelled states (T108)', () => {
+  const CANCELLED_STATES = ['cancelled', 'canceled', 'aborted'];
+
+  for (const state of CANCELLED_STATES) {
+    it(`state "${state}" → clean terminal error envelope (code internal, honest message)`, () => {
+      const r = invocationToResult(withState(state, { invocation_id: 'inv_c1' }));
+      expect(r.status).toBe('error');
+      expect(r.error?.code).toBe('internal');
+      // The message is honest about the cause — NOT the misleading "unrecognised" phrase.
+      expect(r.error?.message).toBe('the invocation was cancelled');
+      expect(r.error?.message).not.toContain('unrecognised');
+      expect(r.result).toBeNull();
+      expect(r.handle).toBeNull();
+      expect(r.approval).toBeNull();
+      expectValid(r);
+    });
+  }
+
+  it('classifyInvocation returns "error" for a cancelled state', () => {
+    expect(classifyInvocation(withState('cancelled'))).toBe('error');
+  });
+
+  it('carries audit_ref from the response, never fabricated', () => {
+    const r = invocationToResult({ state: 'cancelled', invocation_id: 'inv_c2', room: '!r:s' });
+    expect(r.audit_ref.invocation_id).toBe('inv_c2');
+    expect(r.audit_ref.room).toBe('!r:s');
+    expect(r.audit_ref.request_id).toBeNull();
+    expect(r.audit_ref.event_id).toBeNull();
+  });
+
+  it('normalises an uppercase spelling onto the cancelled disposition', () => {
+    expect(classifyInvocation(withState('CANCELLED'))).toBe('error');
+    expect(invocationToResult(withState('ABORTED')).error?.message).toBe('the invocation was cancelled');
+  });
+});
