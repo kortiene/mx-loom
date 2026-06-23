@@ -2,20 +2,23 @@
  * Per-descriptor content tests (T101 Testing Plan — descriptors.test.ts).
  *
  * These tests pin the outer `input_schema` shape and `async_semantics` for each
- * of the 7 P0 verbs so that a binding generator (T109/T110) can rely on them.
- * They are pure content assertions — no daemon, no env, no network.
+ * of the 9 M1 verbs (7 P0 + the 2 P1 verbs T108 adds) so that a binding generator
+ * (T109/T110) can rely on them. They are pure content assertions — no daemon, no
+ * env, no network.
  */
 import { describe, expect, it } from 'vitest';
 
 import {
   CANONICAL_M1_TOOLS,
   MX_AWAIT_RESULT,
+  MX_CANCEL,
   MX_DELEGATE_TOOL,
   MX_DESCRIBE_AGENT,
   MX_FIND_AGENTS,
   MX_GET_CONTEXT,
   MX_RUN_COMMAND,
   MX_SHARE_CONTEXT,
+  MX_WORKSPACE_STATUS,
   TOOL_NAME_RE,
 } from '../src/index.js';
 
@@ -32,17 +35,19 @@ describe('individual descriptor const exports', () => {
     MX_AWAIT_RESULT,
     MX_SHARE_CONTEXT,
     MX_GET_CONTEXT,
+    MX_CANCEL,
+    MX_WORKSPACE_STATUS,
   ];
 
-  it('all 7 individual consts are present and frozen', () => {
+  it('all 9 individual consts are present and frozen', () => {
     for (const d of NAMED) {
       expect(d).toBeDefined();
       expect(Object.isFrozen(d)).toBe(true);
     }
   });
 
-  it('CANONICAL_M1_TOOLS contains the same 7 descriptors in the same object references', () => {
-    expect(CANONICAL_M1_TOOLS).toHaveLength(7);
+  it('CANONICAL_M1_TOOLS contains the same 9 descriptors in the same object references', () => {
+    expect(CANONICAL_M1_TOOLS).toHaveLength(9);
     for (let i = 0; i < NAMED.length; i++) {
       expect(CANONICAL_M1_TOOLS[i]).toBe(NAMED[i]);
     }
@@ -77,6 +82,10 @@ describe('async_semantics per verb', () => {
   });
   it('mx_share_context is sync', () => expect(MX_SHARE_CONTEXT.async_semantics).toBe('sync'));
   it('mx_get_context is sync', () => expect(MX_GET_CONTEXT.async_semantics).toBe('sync'));
+  it('mx_cancel is sync (a cancel is acknowledged immediately; not approval-gated in M1)', () =>
+    expect(MX_CANCEL.async_semantics).toBe('sync'));
+  it('mx_workspace_status is sync (a local read)', () =>
+    expect(MX_WORKSPACE_STATUS.async_semantics).toBe('sync'));
 });
 
 // ---------------------------------------------------------------------------
@@ -331,5 +340,87 @@ describe('mx_get_context descriptor', () => {
   it('output_schema requires context_id', () => {
     const required = (MX_GET_CONTEXT.output_schema as { required?: string[] }).required ?? [];
     expect(required).toContain('context_id');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// mx_cancel — input_schema + output_schema (T108)
+// ---------------------------------------------------------------------------
+
+describe('mx_cancel descriptor', () => {
+  const inputSchema = MX_CANCEL.input_schema as {
+    properties: Record<string, { type: string }>;
+    required: string[];
+    additionalProperties: boolean;
+  };
+
+  it('requires handle', () => {
+    expect(inputSchema.required).toContain('handle');
+  });
+
+  it('handle is a string', () => {
+    expect(inputSchema.properties.handle?.type).toBe('string');
+  });
+
+  it('is a closed input schema (additionalProperties: false)', () => {
+    expect(inputSchema.additionalProperties).toBe(false);
+  });
+
+  it('declares NO idempotency_key (cancelling is naturally idempotent)', () => {
+    expect(inputSchema.properties).not.toHaveProperty('idempotency_key');
+  });
+
+  it('output_schema requires handle and cancelled, and tolerates daemon extras', () => {
+    const out = MX_CANCEL.output_schema as {
+      required?: string[];
+      properties: Record<string, { type: string }>;
+      additionalProperties: unknown;
+    };
+    expect(out.required ?? []).toContain('handle');
+    expect(out.required ?? []).toContain('cancelled');
+    expect(out.properties.cancelled?.type).toBe('boolean');
+    expect(out.additionalProperties).toBe(true);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// mx_workspace_status — input_schema + output_schema (T108)
+// ---------------------------------------------------------------------------
+
+describe('mx_workspace_status descriptor', () => {
+  const inputSchema = MX_WORKSPACE_STATUS.input_schema as {
+    properties?: Record<string, unknown>;
+    required?: string[];
+    additionalProperties: boolean;
+  };
+
+  it('has no model-facing input properties (the room is injected from the session)', () => {
+    expect(inputSchema.properties ?? {}).toEqual({});
+    expect(inputSchema.required ?? []).toEqual([]);
+  });
+
+  it('is a closed input schema (additionalProperties: false)', () => {
+    expect(inputSchema.additionalProperties).toBe(false);
+  });
+
+  it('output_schema requires agents and leaves room for a future tasks field (additionalProperties: true)', () => {
+    const out = MX_WORKSPACE_STATUS.output_schema as {
+      required?: string[];
+      properties: { agents: { type: string; items: { type: string } } };
+      additionalProperties: unknown;
+    };
+    expect(out.required ?? []).toContain('agents');
+    expect(out.properties.agents.type).toBe('array');
+    expect(out.properties.agents.items.type).toBe('object');
+    expect(out.additionalProperties).toBe(true);
+  });
+
+  it('does NOT declare a Matrix members or user_id field (identities are MX agent_ids)', () => {
+    const out = MX_WORKSPACE_STATUS.output_schema as {
+      properties: { workspace?: { properties?: Record<string, unknown> } };
+    };
+    const wsProps = out.properties.workspace?.properties ?? {};
+    expect(wsProps).not.toHaveProperty('members');
+    expect(wsProps).not.toHaveProperty('user_id');
   });
 });

@@ -17,9 +17,9 @@
 
 /**
  * The complete universe of known model-facing `mx_*` verbs (design §2, §8). The
- * default registry authors the **7 P0** verbs (T101); the P1 `mx_cancel` /
- * `mx_workspace_status` land with their handlers (T108). The security regression
- * test asserts the default set is a subset of this allowlist.
+ * default registry now loads all **9** M1 verbs: the 7 P0 verbs (T101) + the 2 P1
+ * verbs `mx_cancel` / `mx_workspace_status` (T108, alongside their handlers). The
+ * security regression test asserts the default set is a subset of this allowlist.
  */
 export const MODEL_FACING_ALLOWLIST = [
   'mx_find_agents',
@@ -29,7 +29,7 @@ export const MODEL_FACING_ALLOWLIST = [
   'mx_await_result',
   'mx_share_context',
   'mx_get_context',
-  // P1 (T108) — known, but authored alongside their handlers, not in M1's P0 set.
+  // P1 (T108) — the cancel + workspace-observe verbs, now in the canonical set.
   'mx_cancel',
   'mx_workspace_status',
 ] as const;

@@ -26,6 +26,8 @@ export {
   MX_AWAIT_RESULT,
   MX_SHARE_CONTEXT,
   MX_GET_CONTEXT,
+  MX_CANCEL,
+  MX_WORKSPACE_STATUS,
 } from './descriptors/index.js';
 
 // The JSON Schema validation seam (Ajv-backed by default; injectable).
@@ -135,3 +137,22 @@ export type { RunCommandInput, ExecDeps, RoomScopedDeps } from './handlers/index
 // before dispatch. `contextResponseToResult` is the shared flat-payload classifier.
 export { mxShareContext, mxGetContext, contextResponseToResult } from './handlers/index.js';
 export type { ShareContextInput, GetContextInput } from './handlers/index.js';
+
+// The cancel + observe handlers (T108): `mx_cancel` + `mx_workspace_status` — the
+// two P1 verbs that complete the M1 model-facing surface (9 verbs). `mx_cancel`
+// (invocation.cancel) lets a model stop an in-flight delegation/command by its
+// deferred handle and returns `ok({ handle, cancelled, state? }, audit_ref)`; it
+// emits a signed cancel and surfaces the receiver's verdict, never enforcing it.
+// `mx_workspace_status` (workspace.status + agent.list) reports the registered
+// agents + project context, deliberately projecting the Matrix `members[].user_id`
+// list OUT (the model-facing identities are the MX agent_ids). Plus the pure
+// non-secret workspace/project projectors.
+export { mxCancel, mxWorkspaceStatus, projectWorkspaceMeta, deriveProject } from './handlers/index.js';
+export type {
+  CancelInput,
+  CancelResult,
+  WorkspaceStatusInput,
+  WorkspaceStatusResult,
+  WorkspaceMeta,
+  ProjectContext,
+} from './handlers/index.js';

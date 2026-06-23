@@ -33,7 +33,8 @@ import {
 // ---------------------------------------------------------------------------
 
 describe('default registry — exact verb set', () => {
-  const EXPECTED_P0 = [
+  // The full M1 model-facing set: the 7 P0 verbs (T101) + the 2 P1 verbs (T108).
+  const EXPECTED_M1 = [
     'mx_find_agents',
     'mx_describe_agent',
     'mx_delegate_tool',
@@ -41,11 +42,13 @@ describe('default registry — exact verb set', () => {
     'mx_await_result',
     'mx_share_context',
     'mx_get_context',
+    'mx_cancel',
+    'mx_workspace_status',
   ] as const;
 
-  it('default registry contains exactly the 7 P0 verbs, no more', () => {
+  it('default registry contains exactly the 9 M1 verbs, no more', () => {
     const names = loadRegistry().list().map((d) => d.name);
-    expect(names).toEqual([...EXPECTED_P0]);
+    expect(names).toEqual([...EXPECTED_M1]);
   });
 
   it('every name in the default registry is mx_*-prefixed', () => {
@@ -61,17 +64,17 @@ describe('default registry — exact verb set', () => {
     }
   });
 
-  it('MODEL_FACING_ALLOWLIST includes all 7 P0 verbs', () => {
+  it('MODEL_FACING_ALLOWLIST includes all 9 M1 verbs', () => {
     const allowlist: readonly string[] = MODEL_FACING_ALLOWLIST;
-    for (const name of EXPECTED_P0) {
+    for (const name of EXPECTED_M1) {
       expect(allowlist).toContain(name);
     }
   });
 
-  it('MODEL_FACING_ALLOWLIST also includes the 2 P1 verbs (mx_cancel, mx_workspace_status)', () => {
-    const allowlist: readonly string[] = MODEL_FACING_ALLOWLIST;
-    expect(allowlist).toContain('mx_cancel');
-    expect(allowlist).toContain('mx_workspace_status');
+  it('the 2 P1 verbs (mx_cancel, mx_workspace_status) are now loaded in the default registry', () => {
+    const registry = loadRegistry();
+    expect(registry.has('mx_cancel')).toBe(true);
+    expect(registry.has('mx_workspace_status')).toBe(true);
   });
 });
 
