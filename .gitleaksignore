@@ -7,3 +7,12 @@
 # alone, so it flags the very test that proves the guard works.
 packages/toolbelt/test/guards.test.ts:private-key:227
 packages/toolbelt/test/guards.test.ts:private-key:228
+
+# The audit mirror's secret-subset test (T113) pins that a battery of
+# well-known token *shapes* (GitHub, Matrix, Slack, Anthropic, OpenAI, AWS, PEM)
+# never reaches a projected row column. The Slack entry is a fabricated stub
+# (sequential digits + an alphabet-sequence suffix), not a live credential — but
+# gitleaks' `slack-bot-token` rule matches the shape. Allowlisted so the
+# redaction test can carry the fixture. (NB: do not quote the literal token
+# here — gitleaks scans this file too.)
+packages/audit/test/secret-boundary.test.ts:slack-bot-token:22

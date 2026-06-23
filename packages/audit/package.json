@@ -1,0 +1,29 @@
+{
+  "name": "@mx-loom/audit",
+  "version": "0.0.0",
+  "private": true,
+  "license": "Apache-2.0",
+  "description": "mx-loom Postgres audit mirror (T113). The queryable index of the two-tier audit: the substrate (signed Matrix event stream) is truth, this is the searchable mirror. A pure projection (`auditRowFrom`) of every T102 `ToolResult` onto a non-secret `AuditRow`, an injected `AuditSink` port with three adapters (Postgres / in-memory / null), an idempotent exactly-once write path, and a best-effort `withAudit` tap a binding applies once. `pg` is quarantined here — registry/toolbelt gain no dependency.",
+  "type": "module",
+  "engines": {
+    "node": ">=20.19"
+  },
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "build": "tsc -p tsconfig.build.json",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "pg": "^8.13.1"
+  },
+  "devDependencies": {
+    "@mx-loom/registry": "workspace:*",
+    "@types/node": "^22.10.0",
+    "@types/pg": "^8.11.10",
+    "typescript": "^5.9.3",
+    "vitest": "^4.1.8"
+  }
+}
