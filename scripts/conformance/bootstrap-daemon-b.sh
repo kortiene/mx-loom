@@ -14,8 +14,16 @@ set -euo pipefail
 
 command -v mx-agent >/dev/null 2>&1 || die "mx-agent not on PATH — run install-mx-agent.sh first"
 
+# Daemon refuses a group/world-accessible socket dir; force 0700 (default umask
+# 0022 creates 0755 and the daemon aborts with "unsafe permissions").
+umask 077
+
 A_SOCKET="${A_SOCKET:-$CONF_STATE_DIR/a/runtime/mx-agent/daemon.sock}"
 A_ROOM="${A_ROOM:-${MXL_CONFORMANCE_ROOM:-}}"
+# Daemon A's agent id — v0.2.1 trust + the receiver policy are BOTH keyed on the
+# sender's agent id, so B must scope trust and policy to this exact id. Emitted by
+# bootstrap-daemon-a.sh as `sender_agent`.
+SENDER_AGENT="${MXL_CONFORMANCE_SENDER_AGENT:-${A_AGENT:-}}"
 [ -S "$A_SOCKET" ] || die "daemon A socket not found at $A_SOCKET — run bootstrap-daemon-a.sh first"
 [ -n "$A_ROOM" ]   || die "daemon A room unknown — pass A_ROOM (from bootstrap-daemon-a.sh output)"
 
@@ -66,38 +74,56 @@ export XDG_DATA_HOME="$B_DATA"
 B_SOCKET="$XDG_RUNTIME_DIR/mx-agent/daemon.sock"
 mkdir -p "$(dirname "$B_SOCKET")"
 
-log "starting daemon B (socket $B_SOCKET)"
-mx-agent daemon start >"$CONF_STATE_DIR/b/daemon.log" 2>&1 &
-echo $! > "$CONF_STATE_DIR/b/daemon.pid"
-wait_for_socket "$B_SOCKET" 60
-
-MX_PASS="$B_PASS" mx-agent auth login --homeserver "$HS_URL" --user "$B_USER" \
-  || die "auth login failed for $B_USER"
-
-# Join B to A's room and register B as a target agent that publishes $TOOL.
-mx-agent workspace join --room "$A_ROOM" || die "daemon B failed to join $A_ROOM"
-
-# Load the receiver policy BEFORE registering, so B enforces deny-by-default.
+# --- Receiver policy — written BEFORE start, read from MX_AGENT_CONFIG_DIR ---
+# v0.2.1 resolves the policy path at the FIRST `daemon start` from
+# MX_AGENT_CONFIG_DIR (else $XDG_CONFIG_HOME/mx-agent, else $HOME/.config/mx-agent)
+# — NOT the data dir. Writing the policy after start (or to the data dir) leaves
+# the daemon policy-less → silent deny-all. So write it to a per-daemon config dir
+# and point MX_AGENT_CONFIG_DIR at it before starting. The golden fixture is
+# room- and sender-agent-scoped, so it needs $A_ROOM + $SENDER_AGENT substituted.
+B_CONFIG="$CONF_STATE_DIR/b/config"
+mkdir -p "$B_CONFIG"
+export MX_AGENT_CONFIG_DIR="$B_CONFIG"
 POLICY_SRC="$(dirname "${BASH_SOURCE[0]}")/$POLICY_FIXTURE"
 [ -f "$POLICY_SRC" ] || die "policy fixture not found: $POLICY_SRC (POLICY_FIXTURE=$POLICY_FIXTURE)"
-B_POLICY="$B_DATA/mx-agent/policy.toml"
-mkdir -p "$(dirname "$B_POLICY")"
-# Substitute every coordinate the fixture might carry. The Tier-2 fixture
-# (policy.b.toml) only contains @@ALLOW_TOOL@@/@@DENY_TOOL@@, so the golden-only
-# expressions are inert no-ops there and its output is byte-identical to before.
-sed -e "s|@@ALLOW_TOOL@@|$TOOL|g" \
+if [ "$POLICY_FIXTURE" = "policy.golden.toml" ] && [ -z "$SENDER_AGENT" ]; then
+  die "golden policy needs the sender agent id — set MXL_CONFORMANCE_SENDER_AGENT (daemon A's \
+agent id, emitted by bootstrap-daemon-a.sh as 'sender_agent')."
+fi
+B_POLICY="$B_CONFIG/policy.toml"
+sed -e "s|@@ROOM@@|$A_ROOM|g" \
+    -e "s|@@SENDER_AGENT@@|$SENDER_AGENT|g" \
+    -e "s|@@ALLOW_TOOL@@|$TOOL|g" \
     -e "s|@@DENY_TOOL@@|$DENIED_TOOL|g" \
     -e "s|@@APPROVAL_TOOL@@|$APPROVAL_TOOL|g" \
     -e "s|@@ALLOW_COMMAND@@|$ALLOWED_COMMAND|g" \
     -e "s|@@ALLOW_CWD@@|$ALLOW_CWD|g" \
     -e "s|@@SANDBOX_BACKEND@@|$SANDBOX_BACKEND|g" \
     "$POLICY_SRC" > "$B_POLICY"
-# Fail loudly rather than load a half-substituted policy: any leftover
-# @@UPPER_CASE@@ coordinate means the bring-up under-specified this fixture.
+chmod 600 "$B_POLICY"
+# Fail loudly rather than load a half-substituted policy.
 if grep -qE '@@[A-Z_]+@@' "$B_POLICY"; then
   die "policy fixture $POLICY_FIXTURE has unsubstituted coordinates: $(grep -oE '@@[A-Z_]+@@' "$B_POLICY" | sort -u | tr '\n' ' ')"
 fi
-log "loaded receiver policy at $B_POLICY (fixture=$POLICY_FIXTURE allow=$TOOL deny=$DENIED_TOOL)"
+log "receiver policy at $B_POLICY (MX_AGENT_CONFIG_DIR; fixture=$POLICY_FIXTURE allow=$TOOL deny=$DENIED_TOOL)"
+
+log "starting daemon B (socket $B_SOCKET)"
+mx-agent daemon start >"$CONF_STATE_DIR/b/daemon.log" 2>&1 &
+echo $! > "$CONF_STATE_DIR/b/daemon.pid"
+wait_for_socket "$B_SOCKET" 60
+
+MX_AGENT_PASSWORD="$B_PASS" mx-agent auth login --homeserver "$HS_URL" --user "$B_USER" \
+  || die "auth login failed for $B_USER"
+
+# Join B to A's room and register B as a target agent that publishes $TOOL.
+mx-agent workspace join "$A_ROOM" || die "daemon B failed to join $A_ROOM"
+
+# B needs the workspace agent power level (50) to publish agent state; A (room
+# creator, PL100) grants it to B's Matrix user after the join.
+SERVER_NAME="${MXL_SERVER_NAME:-golden.local}"
+B_MXID="@${B_USER}:${SERVER_NAME}"
+XDG_RUNTIME_DIR="$CONF_STATE_DIR/a/runtime" XDG_DATA_HOME="$CONF_STATE_DIR/a/data" \
+  mx-agent workspace grant --room "$A_ROOM" --user "$B_MXID" || die "A failed to grant B agent power in $A_ROOM"
 
 # B publishes the ungated tool + the deny-by-default tool. Under the golden
 # fixture it ALSO publishes the approval-gated tool (T114) so the
@@ -119,16 +145,23 @@ B_AGENT="$(printf '%s' "$REG_JSON" | sed -n 's/.*"agent_id"[: ]*"\([^"]*\)".*/\1
 [ -n "$B_AGENT" ] || die "could not parse agent_id from B's agent.register output"
 
 # --- Mutual Ed25519 trust (operator action; never a toolbelt path) ----------
-A_FP="$(XDG_RUNTIME_DIR="$CONF_STATE_DIR/a/runtime" XDG_DATA_HOME="$CONF_STATE_DIR/a/data" \
+# v0.2.1: `trust approve --agent <AGENT> --key <KEY> [--room]`; KEY is the
+# `key_id` (mxagent-ed25519:…) from `trust fingerprint`. Trust is scoped to an
+# (agent, key) pair, so A must also be a registered agent for B to trust it.
+A_KEY="$(XDG_RUNTIME_DIR="$CONF_STATE_DIR/a/runtime" XDG_DATA_HOME="$CONF_STATE_DIR/a/data" \
   mx-agent trust fingerprint --json | sed -n 's/.*"key_id"[: ]*"\([^"]*\)".*/\1/p')"
-B_FP="$(mx-agent trust fingerprint --json | sed -n 's/.*"key_id"[: ]*"\([^"]*\)".*/\1/p')"
-[ -n "$A_FP" ] && [ -n "$B_FP" ] || die "could not read both daemons' trust fingerprints"
+B_KEY="$(mx-agent trust fingerprint --json | sed -n 's/.*"key_id"[: ]*"\([^"]*\)".*/\1/p')"
+[ -n "$A_KEY" ] && [ -n "$B_KEY" ] || die "could not read both daemons' trust keys"
+[ -n "$SENDER_AGENT" ] || die "sender agent id unknown — bootstrap-daemon-a.sh must emit 'sender_agent'"
 
-# B trusts A (so B will authorize A's signed CallRequest)…
-mx-agent trust approve --key-id "$A_FP" || die "B failed to approve A's key"
+# B trusts A (so B will authorize A's signed CallRequest), scoped to A's agent id
+# (already registered by bootstrap-daemon-a.sh) + A's signing key…
+mx-agent trust approve --agent "$SENDER_AGENT" --key "$A_KEY" --room "$A_ROOM" \
+  || die "B failed to approve A's key"
 # …and A trusts B (mutual).
 XDG_RUNTIME_DIR="$CONF_STATE_DIR/a/runtime" XDG_DATA_HOME="$CONF_STATE_DIR/a/data" \
-  mx-agent trust approve --key-id "$B_FP" || die "A failed to approve B's key"
+  mx-agent trust approve --agent "$B_AGENT" --key "$B_KEY" --room "$A_ROOM" \
+  || die "A failed to approve B's key"
 
 emit_output agent "$B_AGENT"
 emit_output tool "$TOOL"
