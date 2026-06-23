@@ -57,6 +57,47 @@ revisit the dialect pin here and in `@mx-loom/registry`._
 | `task.create/update/list/graph` | ◻️ flags confirmed | `task create --room --title [--tool --arg/--input-json --exec --depends-on --blocks --assign --state]` — matches the DAG + signed-action model |
 | `share.file/diff/env` · `approval.decide` · `invocation.*` | ◻️ documented | exercise in the conformance suite (T007 / #7) with a two-daemon fixture. **`invocation.get` backs `mx_await_result` (T103); `invocation.cancel` backs `mx_cancel` (T108)** — the cancel method/param name (`invocation_id`) + reply disposition (`{cancelled?, state?}`) are authored against the design (localised consts) and pinned at the two-daemon round-trip (a cancel needs an in-flight invocation). |
 
+## `policy.toml` schema (T112 / #20) — authored against design, live pin staged
+
+The receiver's deny-by-default guard is a `policy.toml` file the **daemon** reads
+and enforces (design §6 layer 3); mx-loom never parses it — it only observes the
+verdict as a normalized envelope (`policy_denied` → `status: denied`; held →
+`awaiting_approval`). T112 authors the canonical golden-test fixture
+(`scripts/conformance/policy.golden.toml`).
+
+**Verification status: STAGED, not yet live.** Unlike the RPC methods above
+(exercised against a live daemon by T001), the `policy.toml` **file schema** has
+**not** been pinned against a running `v0.2.1` daemon — no daemon was available in
+the implementing environment. Three in-repo sources disagree, so the grammar
+below is **authored against the design's named keys (§6 layers 3/4), pending the
+live load check** (AC 1, gated behind `MXL_CONFORMANCE_TWO_DAEMON=1`). Treat a
+daemon rejection as RED; update this table to the verified grammar when the live
+load succeeds.
+
+- **Load path (assumed).** `$XDG_DATA_HOME/mx-agent/policy.toml` (Linux) — the
+  bring-up writes it **before** `agent.register` so B enforces deny-by-default
+  from the first request. _Unverified:_ whether the daemon auto-loads on start,
+  watches the file, or needs a `policy.*` RPC/CLI to (re)load.
+
+| Key | Authored grammar | Status |
+|---|---|---|
+| `default` | top-level `default = "deny"` — deny-by-default fall-through | ⬜ pin at AC 1 |
+| named-tool allow | `[[allow]]` array-of-tables, each `{ tool = "<name@ver>", requires_approval = <bool> }` | ⬜ matches `policy.b.toml` precedent; pin at AC 1 |
+| command allowlist | `[exec]` block: `allow_commands = ["<bin>"]` | ⚠️ **divergence** — `exec.conformance.test.ts` assumes `[[allow_commands]]`; design §6 lists `allow_commands` conceptually. Pin the real shape at AC 1. |
+| `deny_args_regex` | TOML **literal** string (single quotes) so `\s`/`\b` aren't TOML escapes, e.g. `'(\|\s*sh\b\|\brm\s+-rf\s+/\|\bssh\b\|\bcurl\b)'` | ⬜ pin regex flavor at AC 1 |
+| `allow_cwd` | `allow_cwd = ["<dir>"]` array | ⬜ pin at AC 1 |
+| `network` | top-level `network = "deny"` egress default, inherited by exec | ⬜ pin at AC 1 |
+| sandbox backend | `[exec] sandbox = "bubblewrap" \| "docker" \| "podman"` | ⬜ pin accepted values at AC 1 |
+| `requires_approval` | per-tool and per-`[exec]`; `true` holds the request (`awaiting_approval`) | ⬜ pin at AC 1 |
+| runtime/output caps | design §6 names them; **not** in the v1 fixture | ⬜ not exercised by T112 |
+
+**Deltas from design §6.** The design lists the keys *conceptually* (`allow_tools`,
+`allow_commands`, `allow_cwd`, `deny_args_regex`, sandbox, network,
+`requires_approval`) with no TOML shape. The fixture realizes per-tool allow as
+`[[allow]] tool=…` (not a flat `allow_tools = […]`) following the `policy.b.toml`
+precedent, and the command allowlist as an `[exec]` block. Both are the load-bearing
+unknowns the AC-1 live check must confirm or correct.
+
 ## CLI `--json` fallback transport (T003 / #3)
 
 The toolbelt's secondary transport (ADR-11) is a one-shot `mx-agent <noun> <verb> --json` CLI

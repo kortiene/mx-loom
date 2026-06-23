@@ -80,6 +80,28 @@ export const SKIP_SINGLE_DAEMON = !CONFORMANCE_REQUIRED && !DAEMON_REACHABLE;
  */
 export const SKIP_TWO_DAEMON = !TWO_DAEMON_REQUIRED || !DAEMON_REACHABLE;
 
+/**
+ * `MXL_CONFORMANCE_GOLDEN_POLICY=1` — set by the bring-up when daemon B was
+ * started with `POLICY_FIXTURE=policy.golden.toml` (the canonical golden-test
+ * receiver policy from T112 / #20). When absent, daemon B is running the
+ * throwaway `policy.b.toml` fixture (no approval gate, no deny_args_regex, no
+ * exec block).
+ */
+export function isGoldenPolicyActive(env: NodeJS.ProcessEnv = process.env): boolean {
+  return env['MXL_CONFORMANCE_GOLDEN_POLICY'] === '1';
+}
+
+export const GOLDEN_POLICY_ACTIVE = isGoldenPolicyActive();
+
+/**
+ * Skip golden-policy-specific tests unless `MXL_CONFORMANCE_GOLDEN_POLICY=1`
+ * AND the two-daemon fixture is up. Tests gated here exercise behaviors that
+ * only exist in `policy.golden.toml` — the approval gate (`requires_approval`)
+ * and `deny_args_regex` enforcement on an allowlisted command — and are
+ * meaningless (or produce incorrect results) against the throwaway `policy.b.toml`.
+ */
+export const SKIP_GOLDEN_POLICY = !GOLDEN_POLICY_ACTIVE || SKIP_TWO_DAEMON;
+
 // ---------------------------------------------------------------------------
 // Fail-not-skip prerequisite check (pure → unit-testable)
 // ---------------------------------------------------------------------------
@@ -209,6 +231,15 @@ export interface TwoDaemonFixture {
    * empty/default `policy.toml`). Set via `MXL_CONFORMANCE_DENIED_COMMAND`.
    */
   deniedCommand: string | undefined;
+  /**
+   * Optional high-risk named tool B's golden policy holds for operator approval
+   * (`requires_approval = true` in `policy.golden.toml`). Set via
+   * `MXL_CONFORMANCE_APPROVAL_TOOL`. Required for the approval-gated branch of
+   * the golden end-to-end test (T112 / T114); tests that need it skip when absent.
+   * Lands with the golden bring-up (T114); the coordinate is documented here and
+   * in `scripts/conformance/README.md` (golden-test policy, T112).
+   */
+  approvalTool: string | undefined;
 }
 
 /** Read the Tier 2 fixture coordinates from the env; `null` if any required field is absent. */
@@ -224,6 +255,7 @@ export function readTwoDaemonFixture(env: NodeJS.ProcessEnv = process.env): TwoD
     deniedTool: env['MXL_CONFORMANCE_DENIED_TOOL'],
     allowedCommand: env['MXL_CONFORMANCE_ALLOWED_COMMAND'],
     deniedCommand: env['MXL_CONFORMANCE_DENIED_COMMAND'],
+    approvalTool: env['MXL_CONFORMANCE_APPROVAL_TOOL'],
   };
 }
 

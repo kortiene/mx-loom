@@ -23,6 +23,22 @@ HS_URL="${MATRIX_HOMESERVER_URL:-http://127.0.0.1:8008}"
 TOOL="${MXL_CONFORMANCE_TOOL:-run_tests@1.0.0}"        # B publishes + policy ALLOWS
 DENIED_TOOL="${MXL_CONFORMANCE_DENIED_TOOL:-deploy@1.0.0}" # B publishes + policy DENIES
 
+# Which receiver fixture to load (T112 / #20). Default = the throwaway Tier-2
+# fixture, so the green Tier-2 gate is byte-identical to before. Set
+# POLICY_FIXTURE=policy.golden.toml for the canonical golden-test policy (its
+# guarded-exec + approval-gated coordinates below are substituted in too; for
+# `policy.b.toml` they are inert no-ops, as it carries none of those placeholders).
+POLICY_FIXTURE="${POLICY_FIXTURE:-policy.b.toml}"
+# Golden-fixture (policy.golden.toml) substitution coordinates — see
+# scripts/conformance/README.md "golden-test policy (T112)". The receiver-side
+# registration of the approval tool + exec-enable and the export of the
+# MXL_CONFORMANCE_APPROVAL_* coordinates land with the golden bring-up (T114);
+# here we only fill the fixture so it LOADS (AC 1).
+APPROVAL_TOOL="${MXL_CONFORMANCE_APPROVAL_TOOL:-deploy@1.0.0}"     # high-risk, approval-gated tool
+ALLOWED_COMMAND="${MXL_CONFORMANCE_ALLOWED_COMMAND:-echo}"         # the one allowlisted command
+ALLOW_CWD="${MXL_CONFORMANCE_ALLOW_CWD:-$CONF_STATE_DIR/b/data}"   # cwd the command may run in
+SANDBOX_BACKEND="${MXL_CONFORMANCE_SANDBOX_BACKEND:-bubblewrap}"   # tight sandbox backend
+
 B_RUNTIME="$CONF_STATE_DIR/b/runtime"
 B_DATA="$CONF_STATE_DIR/b/data"
 mkdir -p "$B_RUNTIME" "$B_DATA"
@@ -54,13 +70,27 @@ MX_PASS="$B_PASS" mx-agent auth login --homeserver "$HS_URL" --user "$B_USER" \
 # Join B to A's room and register B as a target agent that publishes $TOOL.
 mx-agent workspace join --room "$A_ROOM" || die "daemon B failed to join $A_ROOM"
 
-# Load the minimal receiver policy BEFORE registering, so B enforces deny-by-default.
-POLICY_SRC="$(dirname "${BASH_SOURCE[0]}")/policy.b.toml"
+# Load the receiver policy BEFORE registering, so B enforces deny-by-default.
+POLICY_SRC="$(dirname "${BASH_SOURCE[0]}")/$POLICY_FIXTURE"
+[ -f "$POLICY_SRC" ] || die "policy fixture not found: $POLICY_SRC (POLICY_FIXTURE=$POLICY_FIXTURE)"
 B_POLICY="$B_DATA/mx-agent/policy.toml"
 mkdir -p "$(dirname "$B_POLICY")"
-# Substitute the tool names into the fixture policy.
-sed -e "s|@@ALLOW_TOOL@@|$TOOL|g" -e "s|@@DENY_TOOL@@|$DENIED_TOOL|g" "$POLICY_SRC" > "$B_POLICY"
-log "loaded receiver policy at $B_POLICY (allow=$TOOL deny=$DENIED_TOOL)"
+# Substitute every coordinate the fixture might carry. The Tier-2 fixture
+# (policy.b.toml) only contains @@ALLOW_TOOL@@/@@DENY_TOOL@@, so the golden-only
+# expressions are inert no-ops there and its output is byte-identical to before.
+sed -e "s|@@ALLOW_TOOL@@|$TOOL|g" \
+    -e "s|@@DENY_TOOL@@|$DENIED_TOOL|g" \
+    -e "s|@@APPROVAL_TOOL@@|$APPROVAL_TOOL|g" \
+    -e "s|@@ALLOW_COMMAND@@|$ALLOWED_COMMAND|g" \
+    -e "s|@@ALLOW_CWD@@|$ALLOW_CWD|g" \
+    -e "s|@@SANDBOX_BACKEND@@|$SANDBOX_BACKEND|g" \
+    "$POLICY_SRC" > "$B_POLICY"
+# Fail loudly rather than load a half-substituted policy: any leftover
+# @@UPPER_CASE@@ coordinate means the bring-up under-specified this fixture.
+if grep -qE '@@[A-Z_]+@@' "$B_POLICY"; then
+  die "policy fixture $POLICY_FIXTURE has unsubstituted coordinates: $(grep -oE '@@[A-Z_]+@@' "$B_POLICY" | sort -u | tr '\n' ' ')"
+fi
+log "loaded receiver policy at $B_POLICY (fixture=$POLICY_FIXTURE allow=$TOOL deny=$DENIED_TOOL)"
 
 REG_JSON="$(mx-agent agent register --room "$A_ROOM" --kind tool-runner \
   --tool "$TOOL" --tool "$DENIED_TOOL" --json)" || die "agent.register (B) failed"
@@ -82,4 +112,17 @@ XDG_RUNTIME_DIR="$CONF_STATE_DIR/a/runtime" XDG_DATA_HOME="$CONF_STATE_DIR/a/dat
 emit_output agent "$B_AGENT"
 emit_output tool "$TOOL"
 emit_output denied_tool "$DENIED_TOOL"
+
+# When the golden fixture is active, export the coordinates its specific test
+# suite (policy-golden.conformance.test.ts) reads. MXL_CONFORMANCE_GOLDEN_POLICY=1
+# tells the harness the golden fixture is loaded (not the throwaway policy.b.toml).
+# MXL_CONFORMANCE_APPROVAL_GATED_TOOL is the alias await-result.conformance.test.ts
+# reads for its AC 2 (awaiting_approval → ok|denied) test. Registration of the
+# approval tool as a published tool on B lands with the golden bring-up (T114).
+if [ "$POLICY_FIXTURE" = "policy.golden.toml" ]; then
+  emit_output golden_policy "1"
+  emit_output approval_gated_tool "$APPROVAL_TOOL"
+  log "golden policy active — MXL_CONFORMANCE_GOLDEN_POLICY=1 approval_tool=$APPROVAL_TOOL"
+fi
+
 log "daemon B ready — agent=$B_AGENT tool=$TOOL denied=$DENIED_TOOL"

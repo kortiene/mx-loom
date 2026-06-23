@@ -1,0 +1,67 @@
+# Canonical golden-test receiver policy — daemon B. T112 / #20.
+#
+# Deny-by-default. This is the deterministic environment the golden end-to-end
+# test (T114, the M1 exit gate) asserts against. Enforcement is OUT-OF-PROCESS,
+# on THIS (receiving) daemon — mx-loom never reads this file; it only observes
+# the daemon's verdict as a normalized envelope (status: ok | awaiting_approval
+# | denied, error.code: policy_denied). A compromised or hallucinating model can
+# only emit a signed *request*; it cannot widen this policy (design §1, §6 L3).
+#
+# Drives every T114 branch:
+#   allowed (no approval):  mx_delegate_tool(@@ALLOW_TOOL@@)      -> status: ok
+#   approval-gated (deleg): mx_delegate_tool(@@APPROVAL_TOOL@@)   -> awaiting_approval -> ok|denied
+#   approval-gated (exec):  mx_run_command(@@ALLOW_COMMAND@@)     -> awaiting_approval -> ok|denied
+#   denied (deny-default):  any tool/command not listed below    -> policy_denied
+#   denied (regex):         an allowed command w/ args tripping   -> policy_denied
+#                           deny_args_regex
+#
+# Sibling of the throwaway Tier-2 fixture `policy.b.toml` (which has no command
+# allowlist, no `network` key, and no approval gate, and so cannot drive the
+# guarded-exec or approval-gated branches). This file is a strict superset; the
+# bring-up chooses between them via POLICY_FIXTURE (see bootstrap-daemon-b.sh).
+#
+# GRAMMAR STATUS — authored against the design's named keys (§6 layers 3/4), NOT
+# yet pinned against a live v0.2.1 daemon. The real `policy.toml` schema is
+# unverified: `policy.b.toml` uses `[[allow]] tool=…`; the exec conformance test
+# assumes `[[allow_commands]]`; the design §6 lists keys conceptually with no
+# TOML shape. AC 1 ("fixture loads on the target daemon") is the forcing function
+# that pins it — verified live and recorded in docs/mx-agent-surface-v0.2.1.md,
+# staged behind `MXL_CONFORMANCE_TWO_DAEMON=1` until a daemon is available. Treat
+# a daemon rejection as RED, never green-by-assumption. Keys flagged `# UNVERIFIED`
+# below are the ones the live check must confirm or correct.
+#
+# SECRET-FREE BY CONSTRUCTION — committed to git. Carries NO Matrix tokens, NO
+# Ed25519 keys, NO provider keys, NO GH_TOKEN, and NO real room/agent ids. Every
+# environment-specific value is a `@@…@@` placeholder substituted at bring-up
+# from throwaway synthetic values (the `policy.b.toml` precedent). `network =
+# "deny"` further bounds any run from exfiltrating outward.
+
+default = "deny"      # deny-by-default — the spine of the receiver guard
+network = "deny"      # no egress for any tool/command run (design §6 L4)
+
+# --- Named tools (mx_delegate_tool / call.start) --------------------------
+[[allow]]                         # named tool #1 — low-risk, ungated (happy path)
+tool = "@@ALLOW_TOOL@@"           # e.g. run_tests@1.0.0
+requires_approval = false
+
+[[allow]]                         # named tool #2 — high-risk, approval-gated
+tool = "@@APPROVAL_TOOL@@"        # e.g. deploy@1.0.0
+requires_approval = true          # requires_approval on the high-risk path
+
+# --- Guarded exec (mx_run_command / exec.start) ---------------------------
+# Guarded exec ships DISABLED; this `[exec]` block is the ONE allowlisted
+# command the receiver permits — behind an explicit binary allowlist + a
+# deny-args regex + a cwd allowlist + a tight sandbox + no network, with
+# `requires_approval` on top (design §6 L4, §9 "guarded exec only — no
+# unrestricted exec"). No wildcard command surface.
+[exec]                                      # UNVERIFIED block shape — `[exec]` vs
+                                            # `[[allow_commands]]` table; pin at AC 1.
+allow_commands = ["@@ALLOW_COMMAND@@"]      # e.g. "echo" or "git" — single binary
+allow_cwd = ["@@ALLOW_CWD@@"]               # e.g. the workspace project dir
+# Block the design's named dangerous patterns: `… | sh`, `rm -rf /`, `ssh`,
+# `curl`. TOML LITERAL string (single quotes) so `\s`/`\b` are NOT processed as
+# TOML escapes — a double-quoted basic string would fail to parse.
+deny_args_regex = '(\|\s*(?:sh|bash)\b|\brm\s+-rf\s+/|\bssh\b|\bcurl\b)'
+sandbox = "@@SANDBOX_BACKEND@@"             # tight backend, e.g. bubblewrap|docker|podman
+requires_approval = true                    # the guarded command is the high-risk path
+# network inherited from the top-level `network = "deny"` egress default.
