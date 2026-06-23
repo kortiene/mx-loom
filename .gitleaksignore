@@ -16,3 +16,10 @@ packages/toolbelt/test/guards.test.ts:private-key:228
 # redaction test can carry the fixture. (NB: do not quote the literal token
 # here — gitleaks scans this file too.)
 packages/audit/test/secret-boundary.test.ts:slack-bot-token:22
+
+# The MCP binding's secret-boundary test (T109) feeds a GitHub-PAT-shaped value
+# into args to prove the outbound guard rejects it. The fixture is a named
+# `FAKE_GH_PAT` stub (a `ghp_` prefix + an obvious "for testing purposes only"
+# body), not a live credential, and fails GitHub's PAT checksum — but gitleaks'
+# `github-pat` rule matches the prefix+length. Allowlisted for the guard test.
+packages/mcp/test/secret-boundary.test.ts:github-pat:184
