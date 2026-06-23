@@ -67,13 +67,28 @@ importers:
 
   packages/claude:
     dependencies:
+      '@modelcontextprotocol/sdk':
+        specifier: ^1.29.0
+        version: 1.29.0(zod@4.4.3)
+      '@mx-loom/audit':
+        specifier: workspace:*
+        version: link:../audit
+      '@mx-loom/mcp':
+        specifier: workspace:*
+        version: link:../mcp
+      '@mx-loom/registry':
+        specifier: workspace:*
+        version: link:../registry
+      '@mx-loom/toolbelt':
+        specifier: workspace:*
+        version: link:../toolbelt
       zod:
         specifier: ^4.4.3
         version: 4.4.3
     devDependencies:
-      '@mx-loom/registry':
-        specifier: workspace:*
-        version: link:../registry
+      '@anthropic-ai/claude-agent-sdk':
+        specifier: ^0.3.183
+        version: 0.3.183(@anthropic-ai/sdk@0.104.2(zod@4.4.3))(@modelcontextprotocol/sdk@1.29.0(zod@4.4.3))(zod@4.4.3)
       '@types/node':
         specifier: ^22.10.0
         version: 22.19.21
@@ -1866,7 +1881,6 @@ snapshots:
       '@anthropic-ai/claude-agent-sdk-linux-x64-musl': 0.3.183
       '@anthropic-ai/claude-agent-sdk-win32-arm64': 0.3.183
       '@anthropic-ai/claude-agent-sdk-win32-x64': 0.3.183
-    optional: true
 
   '@anthropic-ai/sdk@0.104.2(zod@4.4.3)':
     dependencies:

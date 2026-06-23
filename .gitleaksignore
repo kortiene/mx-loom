@@ -23,3 +23,8 @@ packages/audit/test/secret-boundary.test.ts:slack-bot-token:22
 # body), not a live credential, and fails GitHub's PAT checksum — but gitleaks'
 # `github-pat` rule matches the prefix+length. Allowlisted for the guard test.
 packages/mcp/test/secret-boundary.test.ts:github-pat:184
+
+# Same `FAKE_GH_PAT` guard fixture in the Claude Agent SDK binding's
+# secret-boundary test (T110) — a named, "for testing purposes only" stub that
+# fails GitHub's PAT checksum. Allowlisted for the same reason as the MCP one.
+packages/claude/test/secret-boundary.test.ts:github-pat:190

@@ -3,7 +3,7 @@
   "version": "0.0.0",
   "private": true,
   "license": "Apache-2.0",
-  "description": "mx-loom Claude Agent SDK binding. T111: the JSON Schema → Zod converter — turns each canonical `mx_*` descriptor's draft-07 `input_schema` into an equivalent Zod schema the SDK's `tool()` accepts. Fail-closed on any construct outside the supported subset; equivalence is proven against the registry's Ajv seam. (T110 builds the `tool()`/`createSdkMcpServer()` registration on top of this.)",
+  "description": "mx-loom Claude Agent SDK binding. T111: the JSON Schema → Zod converter (turns each canonical `mx_*` descriptor's draft-07 `input_schema` into an equivalent Zod schema the SDK's `tool()` accepts; fail-closed; equivalence proven against the registry's Ajv seam). T110: the in-process shim — `createSdkMcpServer()` + `tool()` registration of the nine `mx_*` verbs (reusing `@mx-loom/mcp`'s router/context/serializer), the hidden `mx_await_result` poll loop, and the secret-free `canUseTool` HITL hook. Secret-free by construction; every authority decision stays out-of-process on the receiving daemon.",
   "type": "module",
   "engines": {
     "node": ">=20.19"
@@ -17,10 +17,18 @@
     "test": "vitest run"
   },
   "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.29.0",
+    "@mx-loom/audit": "workspace:*",
+    "@mx-loom/mcp": "workspace:*",
+    "@mx-loom/registry": "workspace:*",
+    "@mx-loom/toolbelt": "workspace:*",
     "zod": "^4.4.3"
   },
+  "peerDependencies": {
+    "@anthropic-ai/claude-agent-sdk": "^0.3.183"
+  },
   "devDependencies": {
-    "@mx-loom/registry": "workspace:*",
+    "@anthropic-ai/claude-agent-sdk": "^0.3.183",
     "@types/node": "^22.10.0",
     "typescript": "^5.9.3",
     "vitest": "^4.1.8"
