@@ -10,6 +10,10 @@ set -euo pipefail
 
 command -v mx-agent >/dev/null 2>&1 || die "mx-agent not on PATH — run install-mx-agent.sh first"
 
+# The daemon refuses a socket dir with group/world access; a default umask (0022)
+# creates the dir 0755 and the daemon aborts ("unsafe permissions"). Force 0700.
+umask 077
+
 mkdir -p "$CONF_STATE_DIR"
 A_RUNTIME="$CONF_STATE_DIR/a/runtime"
 A_DATA="$CONF_STATE_DIR/a/data"
@@ -56,13 +60,25 @@ wait_for_socket "$A_SOCKET" 60
 # --- Login + workspace ------------------------------------------------------
 # Secret boundary: credentials go to the DAEMON's own session/state, never to the
 # toolbelt or the suite. Password is passed via env/stdin, never argv.
-MX_PASS="$A_PASS" mx-agent auth login --homeserver "$HS_URL" --user "$A_USER" \
+MX_AGENT_PASSWORD="$A_PASS" mx-agent auth login --homeserver "$HS_URL" --user "$A_USER" \
   || die "auth login failed for $A_USER"
 
-ROOM_JSON="$(mx-agent workspace create --json)" || die "workspace.create failed"
+# Public join-rule so the second daemon can join by room id (v0.2.1 rooms are
+# invite-only by default → a non-public room is unjoinable without an invite).
+ROOM_JSON="$(mx-agent workspace create --visibility public --json)" || die "workspace.create failed"
 A_ROOM="$(printf '%s' "$ROOM_JSON" | sed -n 's/.*"room_id"[: ]*"\([^"]*\)".*/\1/p')"
 [ -n "$A_ROOM" ] || die "could not parse room_id from workspace.create output"
 
+# Register A as an agent so it has a STABLE sender identity. v0.2.1 trust and
+# policy are both keyed on the sender agent id (`trust approve --agent`, and
+# `room.agents.<id>` in the receiver policy), so daemon B must scope both to this
+# exact id. The golden bring-up reads `sender_agent` to key the receiver policy.
+A_REG_JSON="$(mx-agent agent register --room "$A_ROOM" --kind generic --json)" \
+  || die "agent.register (A) failed"
+A_AGENT="$(printf '%s' "$A_REG_JSON" | sed -n 's/.*"agent_id"[: ]*"\([^"]*\)".*/\1/p')"
+[ -n "$A_AGENT" ] || die "could not parse A's agent_id from agent.register output"
+
 emit_output socket "$A_SOCKET"
 emit_output room "$A_ROOM"
-log "daemon A ready — socket=$A_SOCKET room=$A_ROOM"
+emit_output sender_agent "$A_AGENT"
+log "daemon A ready — socket=$A_SOCKET room=$A_ROOM sender_agent=$A_AGENT"

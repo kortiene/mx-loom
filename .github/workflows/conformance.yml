@@ -245,6 +245,10 @@ jobs:
         id: bootstrap_b
         env:
           POLICY_FIXTURE: policy.golden.toml
+          # daemon B needs A's room (to join) and A's agent id (to key the
+          # receiver policy + scope trust — v0.2.1 trust/policy are sender-scoped).
+          MXL_CONFORMANCE_ROOM: ${{ steps.bootstrap_a.outputs.room }}
+          MXL_CONFORMANCE_SENDER_AGENT: ${{ steps.bootstrap_a.outputs.sender_agent }}
         run: scripts/conformance/bootstrap-daemon-b.sh
       - name: Run the GOLDEN end-to-end gate (both bindings)
         env:
