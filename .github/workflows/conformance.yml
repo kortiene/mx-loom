@@ -47,6 +47,16 @@ on:
         required: false
         type: boolean
         default: false
+      run_golden:
+        description: Run the GOLDEN end-to-end gate (T114 — both bindings, approval-gated)
+        required: false
+        type: boolean
+        default: false
+      run_audit_pg:
+        description: Also assert the golden audit arm against a live Postgres mirror (MXL_AUDIT_PG=1)
+        required: false
+        type: boolean
+        default: false
 
 concurrency:
   group: conformance-${{ github.ref }}
@@ -100,6 +110,15 @@ jobs:
         run: pnpm --filter @mx-loom/toolbelt test
       - name: Conformance suite loads + skips cleanly without a daemon
         run: pnpm --filter @mx-loom/toolbelt test:conformance
+      # The GOLDEN gate (T114) is wired here too: typecheck it, run its daemon-free
+      # gate-logic unit suite, and prove the e2e arms skip cleanly without a fixture
+      # (so the M1-exit gate never blocks a PR, it just proves the wiring).
+      - name: Typecheck golden gate
+        run: pnpm --filter @mx-loom/golden typecheck
+      - name: Golden gate-logic unit suite (daemon-free)
+        run: pnpm --filter @mx-loom/golden test
+      - name: Golden e2e arms load + skip cleanly without a fixture
+        run: pnpm --filter @mx-loom/golden test:e2e
 
   # ---------------------------------------------------------------------------
   # Tier 0/1 — single live daemon. MXL_CONFORMANCE=1 makes a missing/unreachable
@@ -177,5 +196,72 @@ jobs:
           MXL_CONFORMANCE_DENIED_TOOL: ${{ steps.bootstrap_b.outputs.denied_tool }}
         run: pnpm --filter @mx-loom/toolbelt test:conformance
       - name: Teardown (always)
+        if: always()
+        run: scripts/conformance/down.sh
+
+  # ---------------------------------------------------------------------------
+  # GOLDEN — the M1 exit gate (T114). The one test that exercises EVERY boundary:
+  # a scripted Claude-SDK cognition delegates a named tool AND a guarded command to
+  # daemon B across a room → the receiver's approval gate → an out-of-band operator
+  # decision → result returns → audit rows land, run through BOTH bindings against
+  # the same live two-daemon GOLDEN fixture (policy.golden.toml). `workflow_dispatch`-
+  # gated like `delegate`; a missing/unreachable fixture is a HARD failure (the
+  # golden suite goes red, never silently green). The audit arm optionally asserts a
+  # live Postgres mirror (run_audit_pg → MXL_AUDIT_PG=1) via a service container.
+  # ---------------------------------------------------------------------------
+  golden:
+    runs-on: ubuntu-latest
+    needs: [pin, live]
+    if: github.event_name == 'workflow_dispatch' && inputs.run_golden
+    env:
+      MX_AGENT_VERSION: ${{ needs.pin.outputs.version }}
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: mx_audit
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - name: Install pinned mx-agent binary
+        run: scripts/conformance/install-mx-agent.sh "$MX_AGENT_VERSION"
+      - name: Bring up homeserver + daemon A
+        id: bootstrap_a
+        run: scripts/conformance/bootstrap-daemon-a.sh
+      - name: Bring up daemon B + GOLDEN policy + approval tool + exec-enable + coordinates
+        id: bootstrap_b
+        env:
+          POLICY_FIXTURE: policy.golden.toml
+        run: scripts/conformance/bootstrap-daemon-b.sh
+      - name: Run the GOLDEN end-to-end gate (both bindings)
+        env:
+          MXL_CONFORMANCE_TWO_DAEMON: '1'
+          MXL_CONFORMANCE_GOLDEN_POLICY: '1'
+          MXL_CONFORMANCE_SOCKET: ${{ steps.bootstrap_a.outputs.socket }}
+          MXL_CONFORMANCE_ROOM: ${{ steps.bootstrap_a.outputs.room }}
+          MXL_CONFORMANCE_TARGET_AGENT: ${{ steps.bootstrap_b.outputs.agent }}
+          MXL_CONFORMANCE_TOOL: ${{ steps.bootstrap_b.outputs.tool }}
+          MXL_CONFORMANCE_DENIED_TOOL: ${{ steps.bootstrap_b.outputs.denied_tool }}
+          MXL_CONFORMANCE_APPROVAL_TOOL: ${{ steps.bootstrap_b.outputs.approval_tool }}
+          MXL_CONFORMANCE_ALLOWED_COMMAND: ${{ steps.bootstrap_b.outputs.allowed_command }}
+          MXL_CONFORMANCE_ALLOW_CWD: ${{ steps.bootstrap_b.outputs.allow_cwd }}
+          # Audit arm: assert the live Postgres mirror only when explicitly opted in.
+          MXL_AUDIT_PG: ${{ inputs.run_audit_pg && '1' || '' }}
+          MXL_AUDIT_PG_DSN: ${{ inputs.run_audit_pg && 'postgres://postgres:postgres@127.0.0.1:5432/mx_audit' || '' }}
+        run: pnpm --filter @mx-loom/golden test:e2e
+      - name: Teardown (always; scrub before any upload)
         if: always()
         run: scripts/conformance/down.sh
