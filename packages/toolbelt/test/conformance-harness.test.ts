@@ -25,6 +25,7 @@ import {
   conformanceSocketPath,
   isConformanceRequired,
   isDaemonReachable,
+  isGoldenPolicyActive,
   isTwoDaemonRequired,
   normalizeVersion,
   readPinnedVersion,
@@ -268,6 +269,72 @@ describe('conformance harness — two-daemon fixture reader', () => {
     expect(fx!.allowedCommand).toBe('echo');
     expect(fx!.deniedCommand).toBe('rm');
   });
+
+  // T112 approval-gated coordinate — golden-test bring-up (T114).
+
+  it('approvalTool is explicitly undefined when MXL_CONFORMANCE_APPROVAL_TOOL is absent (T112)', () => {
+    const fx = readTwoDaemonFixture({
+      MXL_CONFORMANCE_ROOM: '!r:localhost',
+      MXL_CONFORMANCE_TARGET_AGENT: 'agent-b',
+      MXL_CONFORMANCE_TOOL: 'run_tests@1.0.0',
+    });
+    expect(fx).not.toBeNull();
+    expect(fx!.approvalTool).toBeUndefined();
+  });
+
+  it('approvalTool is read from MXL_CONFORMANCE_APPROVAL_TOOL (T112 golden-test approval branch)', () => {
+    const fx = readTwoDaemonFixture({
+      MXL_CONFORMANCE_ROOM: '!r:localhost',
+      MXL_CONFORMANCE_TARGET_AGENT: 'agent-b',
+      MXL_CONFORMANCE_TOOL: 'run_tests@1.0.0',
+      MXL_CONFORMANCE_APPROVAL_TOOL: 'deploy@1.0.0',
+    });
+    expect(fx).not.toBeNull();
+    expect(fx!.approvalTool).toBe('deploy@1.0.0');
+  });
+
+  it('all seven fixture fields populated when all env vars present (T106 + T112 full fixture)', () => {
+    const fx = readTwoDaemonFixture({
+      MXL_CONFORMANCE_ROOM: '!r:localhost',
+      MXL_CONFORMANCE_TARGET_AGENT: 'agent-b',
+      MXL_CONFORMANCE_TOOL: 'run_tests@1.0.0',
+      MXL_CONFORMANCE_DENIED_TOOL: 'rm_rf@1.0.0',
+      MXL_CONFORMANCE_ALLOWED_COMMAND: 'echo',
+      MXL_CONFORMANCE_DENIED_COMMAND: 'rm',
+      MXL_CONFORMANCE_APPROVAL_TOOL: 'deploy@1.0.0',
+    });
+    expect(fx).not.toBeNull();
+    expect(fx!.room).toBe('!r:localhost');
+    expect(fx!.targetAgentId).toBe('agent-b');
+    expect(fx!.tool).toBe('run_tests@1.0.0');
+    expect(fx!.deniedTool).toBe('rm_rf@1.0.0');
+    expect(fx!.allowedCommand).toBe('echo');
+    expect(fx!.deniedCommand).toBe('rm');
+    expect(fx!.approvalTool).toBe('deploy@1.0.0');
+  });
+});
+
+describe('conformance harness — golden-policy gate (T112 / #20)', () => {
+  it('isGoldenPolicyActive returns false when MXL_CONFORMANCE_GOLDEN_POLICY is absent', () => {
+    expect(isGoldenPolicyActive({})).toBe(false);
+  });
+
+  it('isGoldenPolicyActive returns false when MXL_CONFORMANCE_GOLDEN_POLICY is "0"', () => {
+    expect(isGoldenPolicyActive({ MXL_CONFORMANCE_GOLDEN_POLICY: '0' })).toBe(false);
+  });
+
+  it('isGoldenPolicyActive returns true only when MXL_CONFORMANCE_GOLDEN_POLICY is "1"', () => {
+    expect(isGoldenPolicyActive({ MXL_CONFORMANCE_GOLDEN_POLICY: '1' })).toBe(true);
+  });
+
+  it('isGoldenPolicyActive is independent of MXL_CONFORMANCE_TWO_DAEMON (the golden gate is additive)', () => {
+    // A golden-policy run requires BOTH flags; the two-daemon gate is a separate check.
+    // isGoldenPolicyActive only reads the golden flag, so it can return true even
+    // when MXL_CONFORMANCE_TWO_DAEMON is absent — the combined SKIP_GOLDEN_POLICY
+    // const in the module handles the conjunction at import time.
+    expect(isGoldenPolicyActive({ MXL_CONFORMANCE_GOLDEN_POLICY: '1' })).toBe(true);
+    expect(isGoldenPolicyActive({ MXL_CONFORMANCE_TWO_DAEMON: '1' })).toBe(false);
+  });
 });
 
 describe('conformance harness — shared assertion vocabulary', () => {
@@ -364,6 +431,7 @@ describe('conformance harness — asserting helpers (assertSingleDaemonPrereqs /
     deniedTool: undefined,
     allowedCommand: undefined,
     deniedCommand: undefined,
+    approvalTool: undefined,
   };
 
   // assertSingleDaemonPrereqs
