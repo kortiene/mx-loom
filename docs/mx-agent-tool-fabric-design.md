@@ -4,7 +4,7 @@
 
 | | |
 |---|---|
-| Status | Active — M0 complete (T001–T008 delivered); M1 in progress — T101–T108 landed (both delegation surfaces: named tools + guarded exec; the shared-context publish/fetch seam; and the cancel + workspace-observe verbs — the **9-verb M1 model-facing surface is complete** at the handler layer); see `docs/backlog.md` |
+| Status | Active — M0 complete (T001–T008 delivered); M1 in progress — T101–T108 landed (both delegation surfaces: named tools + guarded exec; the shared-context publish/fetch seam; and the cancel + workspace-observe verbs — the **9-verb M1 model-facing surface is complete** at the handler layer); **T111 landed** (`@mx-loom/claude` bootstrapped — JSON Schema → Zod converter, the Claude-binding seam that unblocks T110); see `docs/backlog.md` |
 | Date | 2026-06-22 |
 | Substrate pin | mx-agent `v0.2.1` (alpha) |
 | Closes | mx-agency #37 (SDK seam) |
@@ -124,7 +124,7 @@ The canonical registry is transport-neutral. **MCP is the universal binding** (e
 
 Seven requirements; every runtime binding must honor them.
 
-1. **Namespaced descriptor.** `name` (`mx_*`), `description`, `input_schema` (JSON Schema), `output_schema` (JSON Schema for the success payload), and an `async_semantics` flag (`sync` | `deferred` — see point 3). For `mx_delegate_tool`, the inner tool's `input_schema` is passed through from the target agent's published `ToolSchema`. *(Implemented in T101 as the canonical `ToolDescriptor` in `@mx-loom/registry` — a transport-neutral, secret-free, deep-frozen descriptor set with a fail-fast loader/validator (`loadRegistry()`). It is enumerable so the bindings (T109/T110) and the JSON Schema → Zod converter (T111) read it directly; it is the closed no-authority allowlist of model-facing verbs. The result **envelope** below is T102, not part of the descriptor.)*
+1. **Namespaced descriptor.** `name` (`mx_*`), `description`, `input_schema` (JSON Schema), `output_schema` (JSON Schema for the success payload), and an `async_semantics` flag (`sync` | `deferred` — see point 3). For `mx_delegate_tool`, the inner tool's `input_schema` is passed through from the target agent's published `ToolSchema`. *(Implemented in T101 as the canonical `ToolDescriptor` in `@mx-loom/registry` — a transport-neutral, secret-free, deep-frozen descriptor set with a fail-fast loader/validator (`loadRegistry()`). It is enumerable so the bindings (T109/T110) and the JSON Schema → Zod converter (T111, **landed** in `@mx-loom/claude` — fail-closed, equivalence-proven against the registry's Ajv seam) read it directly; it is the closed no-authority allowlist of model-facing verbs. The result **envelope** below is T102, not part of the descriptor.)*
 
 2. **One normalized result envelope** — the single shape every tool returns:
 

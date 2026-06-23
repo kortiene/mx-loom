@@ -4,7 +4,7 @@ Derived from [`mx-agent-tool-fabric-design.md`](./mx-agent-tool-fabric-design.md
 
 | | |
 |---|---|
-| Status | Active — M0 complete; M1 in progress — T101–T108 landed (both delegation surfaces: named tools + guarded exec; the shared-context publish/fetch seam; and the cancel + workspace-observe verbs — the **9-verb M1 model-facing surface is complete** at the handler layer); GitHub issues live in `kortiene/mx-loom` |
+| Status | Active — M0 complete; M1 in progress — T101–T108 landed (both delegation surfaces: named tools + guarded exec; the shared-context publish/fetch seam; and the cancel + workspace-observe verbs — the **9-verb M1 model-facing surface is complete** at the handler layer); **T111 landed** (`@mx-loom/claude` bootstrapped — JSON Schema → Zod converter, the Claude-binding seam that unblocks T110); GitHub issues live in `kortiene/mx-loom` |
 | Target repo | `kortiene/mx-loom` — this repo (branded `mx-loom`); a fresh repo, so issue numbering starts clean |
 | ID scheme | Local `T###` IDs for stable dependency refs; real GitHub numbers assigned at `gh issue create` time |
 | Estimate scale | T-shirt — **S** ≈ ½–1d · **M** ≈ 1–2d · **L** ≈ 3–5d |
@@ -286,8 +286,9 @@ M6                        ▼
 - **Scope:** Converter covering the subset used by tool input schemas; tests on representative schemas.
 - **Out of scope:** Full JSON-Schema spec coverage.
 - **Acceptance criteria:**
-  - [ ] All v1 tool input schemas convert and validate equivalently
+  - [x] All v1 tool input schemas convert and validate equivalently — proven mechanically: for each of the nine `CANONICAL_M1_TOOLS` input schemas, the converted Zod schema and the registry's `createAjvValidator()` (the same Ajv seam the loader and T105 use) agree (accept/reject) across a representative valid+invalid sample table.
 - **Dependencies:** blocked-by T101
+- **Status:** Landed (`packages/claude` = `@mx-loom/claude`, the Claude binding package bootstrapped with the converter as its first module). `jsonSchemaToZod()` / `jsonSchemaToZodRawShape()` cover the exact draft-07 subset the nine canonical input schemas use (`object` closed/open via `additionalProperties`, `string`+`enum`, `integer`+bounds, `array`+`items`, `required`/optional, `description`), plus margin output-schema constructs (`boolean`, `number`, nested objects). **Fail-closed:** any unsupported construct (`oneOf`/`anyOf`/`allOf`/`not`, `$ref`/`$defs`, `if`, `patternProperties`, tuple `items`, union/`null`/unknown `type`, schema-valued `additionalProperties`, non-string `enum` member) throws a typed `JsonSchemaConversionError(path, keyword)` — never a permissive `z.any()`. **Resolved decisions:** (#1) home = new `@mx-loom/claude` (zod is Claude-specific; T110 builds on it); (#2) target **zod v4** (pinned to the SDK's `zod@^4.4.3` — `z.int()`/`z.strictObject`/`z.looseObject`); (#3) ship both the raw-shape form for `tool()` and a strict `z.object` form, with the SDK re-wrap caveat documented; (#4) open `args` object = `z.record(z.string(), z.unknown())` (rejects non-objects); (#6) oracle = the registry's `createAjvValidator()`; (#7) the dynamic inner `args` of `mx_delegate_tool` stay Ajv-validated by T105 — not converted here. T110 remains blocked only on its own work now.
 
 #### T112 · policy: minimal v1 `policy.toml` fixture
 `area/policy` `type/chore` `P0` · **S** · M1
