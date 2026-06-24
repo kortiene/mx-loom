@@ -124,6 +124,57 @@ If `MXL_ADK_MCP_E2E` is unset, the test skips cleanly. If it is set but Python,
 `MXL_ADK_MCP_COMMAND` bin), or the two-daemon fixture is missing, the run fails
 rather than reporting a misleading green.
 
+### T203 OpenCode `mcp` entry acceptance
+
+`test/opencode.mcp-entry.e2e.test.ts` is the issue #25 / T203 e2e acceptance arm. It
+renders this recipe's `opencode.json` (local stdio and remote HTTP), starts
+`opencode serve` from a **scrubbed** environment, and drives:
+
+```
+OpenCode runtime → MCP (stdio | http) → mx-loom-mcp → daemon A → daemon B
+```
+
+Deterministically, with **no** model/provider call, it asserts via OpenCode's HTTP
+API that the `mx-loom` server **connects** (`mcp.status`) and surfaces exactly the
+canonical `mx_*` tools (`tool.ids`), with no authority verb. It seeds the OpenCode
+parent process with clearly-fake secret-shaped values and asserts the scrubbed child
+env, the rendered config, the tool ids, and any tool result remain secret-free (the
+SDK's `createOpencodeServer` is deliberately not used — it spreads the parent env).
+When `MXL_OPENCODE_MODEL` is set it additionally drives a real `session.prompt` so an
+OpenCode agent calls `mx_delegate_tool`, then validates the returned T102 envelope.
+Without a model, the delegation round-trip stays covered by the golden MCP (T114) and
+ADK (T201) arms over the same `@mx-loom/mcp` server.
+
+By default the arm spawns `mx-loom-mcp` via `tsx packages/mcp/src/cli.ts`; set
+`MXL_OPENCODE_MCP_COMMAND` to a globally linked / published bin instead.
+
+```sh
+# Bring up daemon A+B (scripts/conformance/README.md), then run only the OpenCode arm.
+MXL_OPENCODE_MCP_E2E=1 \
+MXL_OPENCODE_MCP_MODE=both \
+MXL_CONFORMANCE_TWO_DAEMON=1 \
+MXL_CONFORMANCE_SOCKET=… \
+MXL_CONFORMANCE_ROOM=… \
+MXL_CONFORMANCE_TARGET_AGENT=… \
+MXL_CONFORMANCE_TOOL=… \
+  pnpm --filter @mx-loom/golden exec vitest run \
+  --config vitest.e2e.config.ts test/opencode.mcp-entry.e2e.test.ts
+
+# Optional opt-ins:
+export MXL_OPENCODE_MODEL=anthropic/claude-haiku-4-5   # real model-in-loop delegate arm
+export MXL_OPENCODE_BIN=/absolute/path/to/opencode      # specific opencode binary
+export MXL_OPENCODE_MCP_COMMAND=/absolute/path/to/mx-loom-mcp
+
+# Cleanup.
+unset MXL_OPENCODE_MCP_E2E MXL_OPENCODE_MCP_MODE MXL_OPENCODE_MODEL MXL_OPENCODE_BIN MXL_OPENCODE_MCP_COMMAND
+scripts/conformance/down.sh
+```
+
+Gating: `MXL_OPENCODE_MCP_E2E` unset → clean skip. Set but the `opencode` binary, a
+runnable `mx-loom-mcp` command, or the two-daemon fixture is missing → hard failure,
+never a misleading green. `MXL_OPENCODE_MCP_MODE=local|remote|both` (default `both`).
+T206 later folds this into the full M2 portability matrix.
+
 ### T204 Pi capability smoke
 
 `test/t204-pi-capability.e2e.test.ts` is the T204/#26 e2e smoke for the Pi

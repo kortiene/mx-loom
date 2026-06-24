@@ -102,15 +102,38 @@ mx-loom-mcp --stdio          # default transport
 }
 ```
 
-**OpenCode** (`opencode.json`):
+**OpenCode** (`opencode.json`, T203). OpenCode consumes this same server via the
+`mcp` block — local stdio or remote HTTP. The **full, safe** recipe — the
+scrubbed-launch secret boundary, the per-server `environment` allowlist, session
+mapping, and the remote entry — lives in
+[`examples/opencode`](../../examples/opencode/README.md). The minimal local shape:
 
 ```jsonc
 {
   "mcp": {
-    "mx-loom": { "type": "local", "command": ["mx-loom-mcp", "--stdio"] }
+    "mx-loom": {
+      "type": "local",
+      "command": ["mx-loom-mcp", "--stdio", "--room", "!workspace:server",
+                  "--kind", "opencode", "--correlation-id", "opencode_<session-id>"]
+    }
   }
 }
 ```
+
+and the remote shape (start `mx-loom-mcp --http` separately; localhost-only):
+
+```jsonc
+{
+  "mcp": {
+    "mx-loom": { "type": "remote", "url": "http://127.0.0.1:7800" }
+  }
+}
+```
+
+OpenCode's per-server `environment` field **adds** vars (it does not reset), so the
+load-bearing secret control is launching OpenCode itself from a scrubbed
+environment — see the example README. The acceptance e2e is
+`packages/golden/test/opencode.mcp-entry.e2e.test.ts` (gated `MXL_OPENCODE_MCP_E2E=1`).
 
 **Google ADK** (`MCPToolset`, Python — mounts this stdio server on an `LlmAgent`).
 The **full, safe** recipe — deny-by-default child env, session/`ToolContext`
