@@ -3,11 +3,15 @@
 The **generated MCP server** for the mx-loom tool fabric (`area/mcp`, **T109 / #17**).
 
 It turns the canonical `@mx-loom/registry` descriptor set into a live **Model
-Context Protocol** endpoint — the *universal binding* every target runtime
-(Claude / ADK / OpenCode / Pi / custom) can speak. This is the MCP half of
-mx-loom's locked design decision #1 ("both bindings in parallel"): one canonical,
-transport-neutral tool registry feeds **both** this generated MCP server **and**
-the Claude Agent SDK native shim (T110).
+Context Protocol** endpoint — the *universal binding* for MCP-capable target
+runtimes (Claude / ADK / OpenCode / custom). **Pi is the exception:** T204
+recorded that `@earendil-works/pi-coding-agent` has no built-in MCP client today,
+so the Pi arm uses native tool registration (`ToolDefinition[]`) instead of
+mounting this server; MCP for Pi is only a possible future extension-mediated
+path. This package remains the MCP half of mx-loom's locked design decision #1
+("both bindings in parallel"): one canonical, transport-neutral tool registry
+feeds **both** this generated MCP server **and** native shims such as the Claude
+Agent SDK binding (T110).
 
 > **Generated, never hand-authored.** Tools come from *enumerating the registry*
 > (`CANONICAL_M1_TOOLS`). Add a tenth descriptor (plus its handler) and it surfaces
@@ -146,8 +150,8 @@ MXL_AUDIT_PG=1 DATABASE_URL=postgres://… mx-loom-mcp --stdio
 
 ## Library surface
 
-For T110 / T201 / T203 / T204 / T114 to embed or drive the server
-programmatically:
+For T110 / T201 / T203 / T114 to embed or drive the server programmatically
+(and for T205/Pi to use as reference code, not a runtime dependency):
 
 ```ts
 import { createBindingContext, createMcpServer } from '@mx-loom/mcp';

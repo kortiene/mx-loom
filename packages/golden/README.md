@@ -67,6 +67,41 @@ MXL_CONFORMANCE_DENIED_TOOL=… MXL_CONFORMANCE_ALLOWED_COMMAND=… \
 In CI this is the `golden` job of `.github/workflows/conformance.yml` (the bring-up
 exports every coordinate from the bootstrap step outputs).
 
+### T204 Pi capability smoke
+
+`test/t204-pi-capability.e2e.test.ts` is the T204/#26 e2e smoke for the Pi
+MCP-vs-native decision. It does **not** require mx-agent daemons, Matrix, a model, or
+provider keys. Instead, it points at a real installed `@earendil-works/pi-coding-agent`
+package and verifies the live Pi surface that the T204 decision depends on:
+
+- Pi CLI/docs expose no built-in MCP mount (`--mcp` / `mcpServers`).
+- Pi SDK native tools registered via `customTools` become active `AgentTool`s.
+- Pi extension tools registered via `pi.registerTool()` become active `AgentTool`s.
+- Both native paths execute through Pi's wrapper and return secret-free results.
+- A **real** canonical-registry `enum` value-set (pulled from `CANONICAL_M1_TOOLS`,
+  e.g. `mx_find_agents.liveness`) survives `StringEnum` -> live-Pi-TypeBox
+  registration in the Google-compatible `{ type: 'string', enum: [...] }` shape
+  (not `Type.Union`/`oneOf`) — grounding the decision record's Risk #3, the most
+  consequential claim T205's descriptor->Pi mapping inherits.
+
+It skips cleanly when no Pi package is configured. To demand it (fail-not-skip):
+
+```sh
+# Setup: install or locate Pi, then point at the package root that contains package.json.
+export MXL_PI_PACKAGE_ROOT=/path/to/node_modules/@earendil-works/pi-coding-agent
+
+# Run only the T204 Pi capability smoke.
+MXL_PI_CAPABILITY_E2E=1 \
+  pnpm --filter @mx-loom/golden exec vitest run \
+  --config vitest.e2e.config.ts test/t204-pi-capability.e2e.test.ts
+
+# Or run it along with the other e2e arms (golden live arms still need their own fixture flags).
+MXL_PI_CAPABILITY_E2E=1 pnpm --filter @mx-loom/golden test:e2e
+
+# Cleanup: unset the opt-in variables; the test removes its temporary Pi config/session dir.
+unset MXL_PI_CAPABILITY_E2E MXL_PI_PACKAGE_ROOT
+```
+
 ### Optional flags
 
 - `MXL_AUDIT_PG=1` + `MXL_AUDIT_PG_DSN=postgres://…` — run the audit arm against a live

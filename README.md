@@ -13,8 +13,10 @@ policy-enforced way to find each other and delegate work.
 > **cognition** (each runtime's reasoning) into one fabric of **coordination** (the mx-agent
 > mesh). **Cognition is pluggable; coordination is the constant.**
 
-> **Status — design phase (2026-06).** This repository currently holds the architecture and
-> a sequenced backlog; implementation has not started. See
+> **Status — active implementation (2026-06).** M0 and the M1 tool/binding/golden
+> gate are in place, with live daemon/model verification still explicitly gated where
+> noted. M2 universal-binding work is underway; T204 has decided Pi's integration path:
+> native tool registration, not direct MCP mounting. See
 > [`docs/mx-agent-tool-fabric-design.md`](docs/mx-agent-tool-fabric-design.md) and
 > [`docs/backlog.md`](docs/backlog.md).
 
@@ -66,7 +68,7 @@ it can reach, not by anything it decides about itself.
 - **Google ADK** — `MCPToolset` + `LongRunningFunctionTool` (approval-aware).
 - **Claude Agent SDK** — in-process `createSdkMcpServer` + `tool()`, with `canUseTool` for HITL.
 - **OpenCode** — MCP server entry in `opencode.json`.
-- **Pi** — MCP or native tool registration.
+- **Pi** — native tool registration (T204: no built-in MCP client today; MCP only via a future extension-mediated path).
 - **Custom** — any runner that speaks MCP or can accept a JSON-Schema tool list.
 
 One canonical descriptor set generates every binding; bindings are never hand-authored per
@@ -76,6 +78,7 @@ runtime.
 
 - [Design — MX-Agent as the Coordination Fabric](docs/mx-agent-tool-fabric-design.md)
 - [Implementation backlog](docs/backlog.md)
+- [Pi tool-surface capability decision (T204)](docs/pi-tool-surface-capability.md)
 
 ## Building mx-loom (the `adw_sdlc` harness)
 
