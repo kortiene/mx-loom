@@ -167,8 +167,15 @@ agent = LlmAgent(
 ```
 
 Generic `MCPToolset` surfaces `running` / `awaiting_approval` as ordinary
-envelopes resolved later with `mx_await_result(handle)`; ADK-native
-`LongRunningFunctionTool` pending tickets are **T202**.
+envelopes resolved later with `mx_await_result(handle)`. For approval-aware
+**native long-running** behavior, [`examples/adk`](../../examples/adk/README.md)
+also ships the **T202** shim ([`long_running_tools.py`](../../examples/adk/long_running_tools.py)):
+`mx_delegate_tool` / `mx_run_command` become ADK `LongRunningFunctionTool`s
+(canonical names preserved) that return a **pending ticket** and resume on the
+terminal result, while the other seven `mx_*` verbs stay ordinary MCP tools. It
+routes initial dispatch + resume back through this same generated server, so the
+secret boundary, session registration, redaction, and audit tap stay centralized;
+the model is never given an approval-mutation tool.
 
 #### Non-secret session flags (one process ⇒ one `MxSession`)
 
