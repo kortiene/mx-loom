@@ -1,0 +1,24 @@
+{
+  "$schema": "https://opencode.ai/config.json",
+  "mcp": {
+    "mx-loom": {
+      "type": "local",
+      "enabled": true,
+      "command": [
+        "mx-loom-mcp",
+        "--stdio",
+        "--room",
+        "!workspace:server",
+        "--kind",
+        "opencode",
+        "--correlation-id",
+        "opencode_<session-id>"
+      ],
+      "environment": {
+        "PATH": "{env:PATH}",
+        "HOME": "{env:HOME}",
+        "XDG_RUNTIME_DIR": "{env:XDG_RUNTIME_DIR}"
+      }
+    }
+  }
+}
