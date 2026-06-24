@@ -1,9 +1,17 @@
 # Google ADK dependency for the mx-loom MCPToolset example (T201 / #23).
 #
 # google-adk is NOT vendored in this repo. Pin the version you verify the import
-# paths against (see examples/adk/README.md → "Setup" step 3). The example module
-# (mcp_toolset_agent.py) defers ADK imports into its factory functions, so the
-# safe-env helper is importable/exercisable without this dependency installed.
+# paths against (see examples/adk/README.md → "Setup" step 3). The example modules
+# (mcp_toolset_agent.py, long_running_tools.py) defer ADK imports into their factory
+# functions, so the safe-env helper and the ADK-free long-running core are
+# importable/exercisable without this dependency installed.
 #
 # Replace the lower bound with the exact version you validate in your environment.
 google-adk>=1.0.0
+
+# Native long-running mode (T202) builds an ADK resume Content via google.genai
+# types (types.Content / Part / FunctionResponse). google-adk depends on google-genai,
+# so this is usually already present; pin it explicitly when you verify the
+# build_resume_content() import path (see examples/adk/README.md → "Native
+# long-running mode (T202)").
+google-genai>=1.0.0
