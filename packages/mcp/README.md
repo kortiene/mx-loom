@@ -112,15 +112,58 @@ mx-loom-mcp --stdio          # default transport
 }
 ```
 
-**Google ADK** (`MCPToolset`, Python — mounts this stdio server on an `LlmAgent`):
+**Google ADK** (`MCPToolset`, Python — mounts this stdio server on an `LlmAgent`).
+The **full, safe** recipe — deny-by-default child env, session/`ToolContext`
+mapping, and the non-secret session flags below — lives in
+[`examples/adk`](../../examples/adk/README.md) (T201). The minimal shape:
 
 ```python
+from google.adk.agents import LlmAgent
 from google.adk.tools.mcp_tool import MCPToolset, StdioServerParameters
+from mcp_toolset_agent import safe_mx_mcp_env
 
-toolset = MCPToolset(
-    connection_params=StdioServerParameters(command="mx-loom-mcp", args=["--stdio"]),
+# `env=` MUST be an explicit deny-by-default allowlist (no provider keys, no
+# MATRIX_*/MX_AGENT_*, no *_TOKEN/_API_KEY/_SECRET/_ACCESS_KEY, no GH_TOKEN) —
+# mirror packages/toolbelt/src/cli/env.ts. See examples/adk/mcp_toolset_agent.py
+# (`safe_mx_mcp_env`). The room + correlation id are session config, never model
+# tool args.
+agent = LlmAgent(
+    name="mx_adk_agent",
+    model="<configured-by-host>",
+    tools=[
+        MCPToolset(
+            connection_params=StdioServerParameters(
+                command="mx-loom-mcp",
+                args=["--stdio", "--room", "!workspace:server", "--kind", "adk",
+                      "--correlation-id", "adk_<session_id>"],
+                env=safe_mx_mcp_env(),  # explicit safe child env
+            ),
+        ),
+    ],
 )
 ```
+
+Generic `MCPToolset` surfaces `running` / `awaiting_approval` as ordinary
+envelopes resolved later with `mx_await_result(handle)`; ADK-native
+`LongRunningFunctionTool` pending tickets are **T202**.
+
+#### Non-secret session flags (one process ⇒ one `MxSession`)
+
+For robust ADK session mapping the `bin` accepts non-secret session metadata in
+addition to `--room` / `--kind`:
+
+| Flag | Maps to | Notes |
+|---|---|---|
+| `--correlation-id <id>` | `openSession({ correlationId })` | joins ADK session activity to audit rows |
+| `--cwd <path>` | `openSession({ workspace: { cwd } })` | flat `agent.register` param (v0.2.1) |
+| `--project-id <id>` | `openSession({ workspace: { project_id } })` | |
+| `--git-commit <sha>` | `openSession({ workspace: { git_commit } })` | |
+| `--max-invocations <n>` | `openSession({ maxInvocations })` | positive integer |
+
+These are **session config**, not model tool args and not credentials. There is
+no flag for Matrix credentials, signing/provider keys, `GH_TOKEN`, trust stores,
+policy paths, or approval decisions — those never cross Boundary A and are
+enforced out-of-process on the receiving daemon.
 
 ### remote (Streamable HTTP)
 

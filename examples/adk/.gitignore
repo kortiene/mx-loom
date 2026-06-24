@@ -1,0 +1,6 @@
+# Python bytecode caches generated when running the example smoke
+# (`python examples/adk/mcp_toolset_agent.py`) or the behavioral test driver.
+# The vitest behavioral suite sets PYTHONDONTWRITEBYTECODE=1, but the documented
+# manual smoke does not — keep these transient artifacts out of version control.
+__pycache__/
+*.pyc
