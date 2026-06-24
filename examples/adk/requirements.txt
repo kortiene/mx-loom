@@ -1,0 +1,9 @@
+# Google ADK dependency for the mx-loom MCPToolset example (T201 / #23).
+#
+# google-adk is NOT vendored in this repo. Pin the version you verify the import
+# paths against (see examples/adk/README.md → "Setup" step 3). The example module
+# (mcp_toolset_agent.py) defers ADK imports into its factory functions, so the
+# safe-env helper is importable/exercisable without this dependency installed.
+#
+# Replace the lower bound with the exact version you validate in your environment.
+google-adk>=1.0.0

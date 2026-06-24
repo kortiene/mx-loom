@@ -67,6 +67,63 @@ MXL_CONFORMANCE_DENIED_TOOL=… MXL_CONFORMANCE_ALLOWED_COMMAND=… \
 In CI this is the `golden` job of `.github/workflows/conformance.yml` (the bring-up
 exports every coordinate from the bootstrap step outputs).
 
+### T201 ADK `MCPToolset` acceptance
+
+`test/adk.mcp-toolset.e2e.test.ts` is the issue #23 / T201 e2e acceptance arm. It
+requires a real Google ADK install plus the live two-daemon mx-agent fixture and
+drives:
+
+```
+ADK LlmAgent + MCPToolset → mx-loom-mcp --stdio → daemon A → daemon B
+```
+
+It does **not** call a model or require provider keys. The Python driver builds an
+`LlmAgent`, asks ADK's `MCPToolset` to list the canonical `mx_*` tools, calls
+`mx_find_agents`, then delegates the fixture's allowlisted named tool with
+`mx_delegate_tool`. It also seeds the ADK parent process with clearly-fake
+secret-shaped environment values and asserts ADK-visible tool lists/results remain
+secret-free. Approval-ticket resume is intentionally out of scope here (T202).
+
+ADK's `MCPToolset` spawns one `command` over stdio. By default this arm generates a
+small launcher that runs `tsx packages/mcp/src/cli.ts` — the same proven in-repo
+subprocess path `packages/mcp/test/stdio.integration.test.ts` uses. (The built
+`dist/cli.js` is **not** independently runnable under plain `node` in this workspace:
+every `@mx-loom/*` package's `exports` points at TypeScript source, so the built
+bin's cross-package `./foo.js` specifiers do not resolve until the standalone bin is
+published in T602.) Set `MXL_ADK_MCP_COMMAND` to a globally linked / published
+`mx-loom-mcp` to exercise the real packaged bin instead — no `pnpm build` step is
+needed for the default path.
+
+```sh
+# Setup: install ADK in a venv/interpreter (tsx already comes with pnpm install).
+python3 -m venv .venv-adk
+. .venv-adk/bin/activate
+python -m pip install -r examples/adk/requirements.txt
+
+# Bring up daemon A+B using scripts/conformance/README.md, then run only the ADK arm.
+MXL_ADK_MCP_E2E=1 \
+MXL_ADK_PYTHON="$PWD/.venv-adk/bin/python" \
+MXL_CONFORMANCE_TWO_DAEMON=1 \
+MXL_CONFORMANCE_SOCKET=… \
+MXL_CONFORMANCE_ROOM=… \
+MXL_CONFORMANCE_TARGET_AGENT=… \
+MXL_CONFORMANCE_TOOL=… \
+  pnpm --filter @mx-loom/golden exec vitest run \
+  --config vitest.e2e.config.ts test/adk.mcp-toolset.e2e.test.ts
+
+# Optional: exercise a real linked/published mx-loom-mcp bin instead of tsx+source.
+export MXL_ADK_MCP_COMMAND=/absolute/path/to/mx-loom-mcp
+
+# Cleanup: deactivate the venv, tear down the daemon fixture, and unset opt-ins.
+unset MXL_ADK_MCP_E2E MXL_ADK_PYTHON MXL_ADK_MCP_COMMAND
+scripts/conformance/down.sh
+```
+
+If `MXL_ADK_MCP_E2E` is unset, the test skips cleanly. If it is set but Python,
+`google-adk`, a runnable `mx-loom-mcp` command (`tsx` + source, or the
+`MXL_ADK_MCP_COMMAND` bin), or the two-daemon fixture is missing, the run fails
+rather than reporting a misleading green.
+
 ### T204 Pi capability smoke
 
 `test/t204-pi-capability.e2e.test.ts` is the T204/#26 e2e smoke for the Pi

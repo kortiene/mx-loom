@@ -21,54 +21,26 @@
  * `NullAuditSink` (off). The CLI holds no Boundary-A secret; the toolbelt owns the
  * socket + env allowlist.
  *
+ * Non-secret **session** flags (`--room`, `--kind`, `--correlation-id`, `--cwd`,
+ * `--project-id`, `--git-commit`, `--max-invocations`) map one process ⇒ one
+ * `MxSession` registration (the ADK / T201 mapping). Parsing + projection live in
+ * the pure {@link ./cli-options.ts} module; this file is the thin bin around them.
+ *
  * Shuts down cleanly on `SIGINT` / `SIGTERM` and on stdin close (stdio mode).
  */
 import { createServer } from 'node:http';
 import type { IncomingMessage, Server as HttpServer, ServerResponse } from 'node:http';
-import { parseArgs } from 'node:util';
 
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
 import { StreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/streamableHttp.js';
 import { createPostgresAuditSink, NullAuditSink } from '@mx-loom/audit';
 import type { AuditSink } from '@mx-loom/audit';
 
+import { buildSessionOptions, parseCliArgs } from './cli-options.js';
+import type { CliOptions } from './cli-options.js';
 import { createBindingContext } from './context.js';
 import type { BindingContext } from './context.js';
 import { createMcpServer } from './server.js';
-
-interface CliOptions {
-  http: boolean;
-  host: string;
-  port: number;
-  room: string | undefined;
-  kind: string | undefined;
-  audit: boolean;
-}
-
-function parseCliArgs(argv: readonly string[]): CliOptions {
-  const { values } = parseArgs({
-    args: [...argv],
-    options: {
-      stdio: { type: 'boolean' },
-      http: { type: 'boolean' },
-      host: { type: 'string' },
-      port: { type: 'string' },
-      room: { type: 'string' },
-      kind: { type: 'string' },
-      audit: { type: 'boolean' },
-    },
-    allowPositionals: false,
-  });
-  return {
-    http: values.http === true,
-    host: values.host ?? '127.0.0.1',
-    port: values.port !== undefined ? Number(values.port) : 7800,
-    room: values.room,
-    kind: values.kind,
-    // `--audit` or the documented env switch enables the Postgres mirror.
-    audit: values.audit === true || process.env['MXL_AUDIT_PG'] === '1',
-  };
-}
 
 /** Build the audit sink: a best-effort Postgres mirror when opted in, else a no-op. */
 async function buildAuditSink(opts: CliOptions): Promise<AuditSink> {
@@ -97,10 +69,7 @@ async function main(): Promise<void> {
 
   const ctx = await createBindingContext({
     auditSink,
-    sessionOptions: {
-      ...(opts.room !== undefined ? { room: opts.room } : {}),
-      ...(opts.kind !== undefined ? { kind: opts.kind } : {}),
-    },
+    sessionOptions: buildSessionOptions(opts),
   });
 
   const server = createMcpServer(ctx);
