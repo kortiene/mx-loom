@@ -2,7 +2,8 @@
  * The in-process tool-server builder (T110 / #18) — descriptors →
  * `createSdkMcpServer`.
  *
- * {@link createMxToolServer} enumerates the canonical {@link CANONICAL_M1_TOOLS}
+ * {@link createMxToolServer} enumerates the canonical {@link CANONICAL_TOOLS} (the
+ * full 12-verb set: the 9 M1 verbs + the 3 M3 task verbs)
  * and produces one SDK `tool()` per descriptor, wrapped in a
  * `createSdkMcpServer({ name, version, tools })` config the host drops into
  * `options.mcpServers`. The toolbelt then runs **inside** the agent process — no
@@ -41,7 +42,7 @@ import { withAudit } from '@mx-loom/audit';
 import type { AuditTap } from '@mx-loom/audit';
 import { dispatchCall, serializeToolResult } from '@mx-loom/mcp';
 import type { BindingContext, ToolArgs } from '@mx-loom/mcp';
-import { CANONICAL_M1_TOOLS } from '@mx-loom/registry';
+import { CANONICAL_TOOLS } from '@mx-loom/registry';
 
 import { jsonSchemaToZodRawShape } from './json-schema-to-zod.js';
 import { DEFAULT_SERVER_NAME } from './names.js';
@@ -82,7 +83,7 @@ function idempotencyKeyOf(args: ToolArgs | undefined): string | undefined {
 }
 
 /**
- * Build the in-process `createSdkMcpServer` config for the nine canonical `mx_*`
+ * Build the in-process `createSdkMcpServer` config for the twelve canonical `mx_*`
  * verbs, bound to a secret-free {@link BindingContext}.
  *
  * @throws {JsonSchemaConversionError} at build time if a descriptor's
@@ -110,7 +111,7 @@ export function createMxToolServer(
     ...(options.pollIntervalMs !== undefined ? { pollIntervalMs: options.pollIntervalMs } : {}),
   };
 
-  const tools = CANONICAL_M1_TOOLS.map((descriptor) => {
+  const tools = CANONICAL_TOOLS.map((descriptor) => {
     // Fail-closed at build time: a drifted schema throws JsonSchemaConversionError
     // here, never silently widening the model's input surface.
     const shape = jsonSchemaToZodRawShape(descriptor.input_schema);

@@ -40,7 +40,7 @@ export { dispatchCall, DISPATCH, EMPTY_AUDIT_REF } from './dispatch.js';
 export type { DispatchEntry, ToolArgs } from './dispatch.js';
 
 // ---------------------------------------------------------------------------
-// The tool generator — `CANONICAL_M1_TOOLS` → Pi `ToolDefinition[]`.
+// The tool generator — `CANONICAL_TOOLS` → Pi `ToolDefinition[]`.
 // ---------------------------------------------------------------------------
 export { createPiToolDefinitions } from './tools.js';
 export type { CreatePiToolDefinitionsOptions } from './tools.js';

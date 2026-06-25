@@ -14,6 +14,7 @@ import { CREDENTIAL_KEY_RE as TOOLBELT_CREDENTIAL_KEY_RE } from '@mx-loom/toolbe
 
 import {
   CANONICAL_M1_TOOLS,
+  CANONICAL_TOOLS,
   collectSchemaPropertyNames,
   CREDENTIAL_KEY_RE,
   DescriptorValidationError,
@@ -46,9 +47,12 @@ describe('default registry — exact verb set', () => {
     'mx_workspace_status',
   ] as const;
 
-  it('default registry contains exactly the 9 M1 verbs, no more', () => {
+  // The full canonical set: the 9 M1 verbs + the 3 M3 task-DAG verbs (T301).
+  const EXPECTED_ALL = [...EXPECTED_M1, 'mx_create_task', 'mx_update_task', 'mx_list_tasks'] as const;
+
+  it('default registry contains exactly the 12 canonical verbs (9 M1 + 3 M3), no more', () => {
     const names = loadRegistry().list().map((d) => d.name);
-    expect(names).toEqual([...EXPECTED_M1]);
+    expect(names).toEqual([...EXPECTED_ALL]);
   });
 
   it('every name in the default registry is mx_*-prefixed', () => {
@@ -109,8 +113,8 @@ describe('isForbiddenAuthorityVerb', () => {
     expect(isForbiddenAuthorityVerb('daemon.stop')).toBe(true);
   });
 
-  it('returns false for all valid model-facing mx_* names', () => {
-    for (const d of CANONICAL_M1_TOOLS) {
+  it('returns false for all valid model-facing mx_* names (M1 + M3 full set)', () => {
+    for (const d of CANONICAL_TOOLS) {
       expect(isForbiddenAuthorityVerb(d.name)).toBe(false);
     }
   });
@@ -456,28 +460,40 @@ describe('mx_run_command — guarded exec', () => {
 
 describe('canonical descriptors — global security pass', () => {
   it('no canonical input_schema declares a credential-shaped property (including nested)', () => {
-    for (const d of CANONICAL_M1_TOOLS) {
+    for (const d of CANONICAL_TOOLS) {
       const offender = findCredentialShapedProperty(d.input_schema, TOOLBELT_CREDENTIAL_KEY_RE);
       expect(offender, `${d.name}.input_schema must not declare credential-shaped fields`).toBeUndefined();
     }
   });
 
   it('no canonical output_schema declares a credential-shaped property (including nested)', () => {
-    for (const d of CANONICAL_M1_TOOLS) {
+    for (const d of CANONICAL_TOOLS) {
       const offender = findCredentialShapedProperty(d.output_schema, TOOLBELT_CREDENTIAL_KEY_RE);
       expect(offender, `${d.name}.output_schema must not declare credential-shaped fields`).toBeUndefined();
     }
   });
 
   it('no canonical descriptor name is a forbidden authority verb', () => {
-    for (const d of CANONICAL_M1_TOOLS) {
+    for (const d of CANONICAL_TOOLS) {
       expect(isForbiddenAuthorityVerb(d.name), `${d.name} must not be an authority verb`).toBe(false);
     }
   });
 
   it('all canonical descriptor names pass TOOL_NAME_RE', () => {
-    for (const d of CANONICAL_M1_TOOLS) {
+    for (const d of CANONICAL_TOOLS) {
       expect(/^mx_[a-z0-9]+(?:_[a-z0-9]+)*$/.test(d.name), `${d.name} must match mx_* regex`).toBe(true);
+    }
+  });
+
+  it('the 3 M3 task verbs pass the same security invariants as M1 verbs', () => {
+    const taskVerbs = ['mx_create_task', 'mx_update_task', 'mx_list_tasks'];
+    const loaded = loadRegistry();
+    for (const name of taskVerbs) {
+      const d = loaded.get(name);
+      expect(d, `${name} must be in the default registry`).toBeDefined();
+      expect(isForbiddenAuthorityVerb(name), `${name} must not be an authority verb`).toBe(false);
+      expect(findCredentialShapedProperty(d!.input_schema, TOOLBELT_CREDENTIAL_KEY_RE), `${name}.input_schema`).toBeUndefined();
+      expect(findCredentialShapedProperty(d!.output_schema, TOOLBELT_CREDENTIAL_KEY_RE), `${name}.output_schema`).toBeUndefined();
     }
   });
 });

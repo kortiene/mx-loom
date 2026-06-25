@@ -10,7 +10,7 @@
  * No daemon, no socket, no real Pi/TypeBox install.
  */
 import { NullAuditSink } from '@mx-loom/audit';
-import { CANONICAL_M1_TOOLS, MX_FIND_AGENTS, isForbiddenAuthorityVerb } from '@mx-loom/registry';
+import { CANONICAL_TOOLS, MX_FIND_AGENTS, isForbiddenAuthorityVerb } from '@mx-loom/registry';
 import type { DaemonCall } from '@mx-loom/registry';
 import { describe, expect, it } from 'vitest';
 
@@ -104,7 +104,7 @@ describe('createPiToolDefinitions — generated tool list', () => {
   it('generates exactly the canonical mx_* verbs, no authority verb, with non-empty prompt metadata', async () => {
     const tools = await makeTools();
     const names = tools.map((t) => t.name).sort();
-    expect(names).toEqual(CANONICAL_M1_TOOLS.map((d) => d.name).sort());
+    expect(names).toEqual(CANONICAL_TOOLS.map((d) => d.name).sort());
     expect(names).toEqual(mxToolNames().sort());
 
     for (const tool of tools) {

@@ -63,6 +63,20 @@ export type { CancelInput, CancelResult } from './cancel.js';
 export { mxWorkspaceStatus } from './workspace-status.js';
 export type { WorkspaceStatusInput, WorkspaceStatusResult } from './workspace-status.js';
 
+// The task-DAG handlers (T301): `mx_create_task` (task.create → normalize to
+// `ok(TaskNode, audit_ref)`), `mx_update_task` (task.update → transition state →
+// `ok(TaskNode, audit_ref)`), and `mx_list_tasks` (task.list + derived/`task.graph`
+// edges → `ok({ tasks, edges? }, EMPTY_AUDIT_REF)`). All three `sync`,
+// `RoomScopedDeps` (the DAG is workspace-scoped; mutators fail-fast on a missing
+// room, the read is best-effort). The two mutators author + read a node's signed
+// `action` but never dispatch it (T303 dispatches).
+export { mxCreateTask } from './create-task.js';
+export type { CreateTaskInput } from './create-task.js';
+export { mxUpdateTask } from './update-task.js';
+export type { UpdateTaskInput } from './update-task.js';
+export { mxListTasks } from './list-tasks.js';
+export type { ListTasksInput, ListTasksResult } from './list-tasks.js';
+
 // The pure agent-record projectors (non-secret subset) + their model-facing types.
 export { projectAgentSummary, projectAgentDetail, projectTools } from './agent-projection.js';
 export type { AgentSummary, AgentDetail, PublishedTool, AgentLiveness } from './agent-projection.js';
@@ -70,3 +84,16 @@ export type { AgentSummary, AgentDetail, PublishedTool, AgentLiveness } from './
 // The pure workspace/project projectors (non-secret subset) for `mx_workspace_status`.
 export { projectWorkspaceMeta, deriveProject } from './workspace-projection.js';
 export type { WorkspaceMeta, ProjectContext } from './workspace-projection.js';
+
+// The pure task-DAG projectors + state mapping (the issue's "map states") + types.
+export {
+  projectTaskNode,
+  projectTaskEdge,
+  mapTaskState,
+  deriveEdges,
+  mergeEdges,
+  taskNodeResponseToResult,
+  TASK_STATES,
+  TASK_STATE_OUTPUTS,
+} from './task-projection.js';
+export type { TaskNode, TaskEdge, TaskState, TaskAction } from './task-projection.js';

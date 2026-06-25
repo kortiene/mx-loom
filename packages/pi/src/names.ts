@@ -8,7 +8,7 @@
  * exactly the canonical `mx_*` verbs. These helpers exist so a host can enable
  * *only* the generated mx-loom tools without restating the list.
  */
-import { CANONICAL_M1_TOOLS } from '@mx-loom/registry';
+import { CANONICAL_TOOLS } from '@mx-loom/registry';
 
 /**
  * The bare names of the generated mx-loom Pi tools, in canonical order. Pass to
@@ -18,10 +18,10 @@ import { CANONICAL_M1_TOOLS } from '@mx-loom/registry';
  * disabled tool callable — it must also be in the active set.
  */
 export function mxToolNames(): string[] {
-  return CANONICAL_M1_TOOLS.map((descriptor) => descriptor.name);
+  return CANONICAL_TOOLS.map((descriptor) => descriptor.name);
 }
 
 /** True iff `name` is one of the canonical mx-loom `mx_*` verbs this binding registers. */
 export function isMxToolName(name: string): boolean {
-  return CANONICAL_M1_TOOLS.some((descriptor) => descriptor.name === name);
+  return CANONICAL_TOOLS.some((descriptor) => descriptor.name === name);
 }

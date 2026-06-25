@@ -17,7 +17,7 @@
 import { describe, expect, it } from 'vitest';
 
 import { NullAuditSink } from '@mx-loom/audit';
-import { CANONICAL_M1_TOOLS, FORBIDDEN_AUTHORITY_VERBS, isForbiddenAuthorityVerb } from '@mx-loom/registry';
+import { CANONICAL_M1_TOOLS, CANONICAL_TOOLS, FORBIDDEN_AUTHORITY_VERBS, isForbiddenAuthorityVerb } from '@mx-loom/registry';
 import type { DaemonCall } from '@mx-loom/registry';
 
 import type { BindingContext } from '../src/context.js';
@@ -38,7 +38,7 @@ function makeCtx(options?: { room?: string | undefined; daemon?: DaemonCall }): 
   };
 }
 
-/** Minimal valid args for each of the nine verbs (enough to reach the handler). */
+/** Minimal valid args for each of the twelve verbs (enough to reach the handler). */
 const TOOL_ARGS: Readonly<Record<string, Record<string, unknown>>> = {
   mx_find_agents: {},
   mx_describe_agent: { agent_id: 'agent-b' },
@@ -49,6 +49,10 @@ const TOOL_ARGS: Readonly<Record<string, Record<string, unknown>>> = {
   mx_share_context: { kind: 'file', content: 'hello' },
   mx_get_context: { context_id: 'ctx_1' },
   mx_workspace_status: {},
+  // M3 (T301) task-DAG verbs.
+  mx_create_task: { title: 'Pi stub task' },
+  mx_update_task: { task_id: 'task_pi_stub_1' },
+  mx_list_tasks: {},
 };
 
 // ---------------------------------------------------------------------------
@@ -56,8 +60,8 @@ const TOOL_ARGS: Readonly<Record<string, Record<string, unknown>>> = {
 // ---------------------------------------------------------------------------
 
 describe('DISPATCH table structure', () => {
-  it('has exactly the nine canonical tool names as keys', () => {
-    const canonical = new Set(CANONICAL_M1_TOOLS.map((d) => d.name));
+  it('has exactly the twelve canonical tool names as keys', () => {
+    const canonical = new Set(CANONICAL_TOOLS.map((d) => d.name));
     const keys = new Set(Object.keys(DISPATCH));
     expect(keys).toEqual(canonical);
   });
@@ -113,13 +117,28 @@ describe('dispatchCall', () => {
   });
 
   it.each(CANONICAL_M1_TOOLS)(
-    '$name: dispatches without throwing and returns a ToolResult',
+    '$name (M1): dispatches without throwing and returns a ToolResult',
     async ({ name }) => {
       const args = TOOL_ARGS[name] ?? {};
       const result = await dispatchCall(name, args, makeCtx());
       expect(result).toHaveProperty('status');
       expect(result).toHaveProperty('audit_ref');
       // Any of the five valid statuses is acceptable.
+      expect(['ok', 'running', 'awaiting_approval', 'denied', 'error']).toContain(result.status);
+    },
+  );
+
+  it.each([
+    { name: 'mx_create_task' },
+    { name: 'mx_update_task' },
+    { name: 'mx_list_tasks' },
+  ])(
+    '$name (M3 task verb): dispatches without throwing and returns a ToolResult',
+    async ({ name }) => {
+      const args = TOOL_ARGS[name] ?? {};
+      const result = await dispatchCall(name, args, makeCtx());
+      expect(result).toHaveProperty('status');
+      expect(result).toHaveProperty('audit_ref');
       expect(['ok', 'running', 'awaiting_approval', 'denied', 'error']).toContain(result.status);
     },
   );
@@ -175,5 +194,38 @@ describe('room provenance', () => {
     );
     expect(result.status).toBe('error');
     expect(result.error?.code).toBe('internal');
+  });
+
+  it('mx_create_task: context room reaches the task.create daemon call', async () => {
+    const calls: Array<{ method: string; params: unknown }> = [];
+    const ctx = makeCtx({
+      room: '!pi-task-room:server',
+      daemon: makeFakeDaemon((m, p) => calls.push({ method: m, params: p })),
+    });
+    await dispatchCall('mx_create_task', { title: 'Room test' }, ctx);
+    const createCall = calls.find((c) => c.method === 'task.create');
+    expect(createCall).toBeDefined();
+    expect((createCall?.params as Record<string, unknown>)?.['room']).toBe('!pi-task-room:server');
+  });
+
+  it('mx_create_task: returns internal error when context has no room (fail-fast mutator)', async () => {
+    const ctx = makeCtx({ room: undefined });
+    const result = await dispatchCall('mx_create_task', { title: 'No room' }, ctx);
+    expect(result.status).toBe('error');
+    expect(result.error?.code).toBe('internal');
+  });
+
+  it('mx_update_task: returns internal error when context has no room (fail-fast mutator)', async () => {
+    const ctx = makeCtx({ room: undefined });
+    const result = await dispatchCall('mx_update_task', { task_id: 'task_x' }, ctx);
+    expect(result.status).toBe('error');
+    expect(result.error?.code).toBe('internal');
+  });
+
+  it('mx_list_tasks: succeeds (ok) with no room — best-effort read does not fail-fast', async () => {
+    const ctx = makeCtx({ room: undefined });
+    const result = await dispatchCall('mx_list_tasks', {}, ctx);
+    expect(result).toHaveProperty('status');
+    expect(result.status).toBe('ok');
   });
 });

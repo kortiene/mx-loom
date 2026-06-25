@@ -2,23 +2,23 @@
  * Tool-name helpers (T205) — mxToolNames + isMxToolName.
  *
  * Tests:
- *  - `mxToolNames()` returns exactly the nine canonical mx_* verb names.
+ *  - `mxToolNames()` returns exactly the twelve canonical mx_* verb names.
  *  - Every name starts with `mx_`.
- *  - Count matches CANONICAL_M1_TOOLS.
+ *  - Count matches CANONICAL_TOOLS.
  *  - `isMxToolName()` returns true for each canonical name.
  *  - `isMxToolName()` returns false for unknown or authority-flavored names.
  */
 import { describe, expect, it } from 'vitest';
 
-import { CANONICAL_M1_TOOLS } from '@mx-loom/registry';
+import { CANONICAL_TOOLS } from '@mx-loom/registry';
 
 import { isMxToolName, mxToolNames } from '../src/names.js';
 
 describe('mxToolNames()', () => {
-  it('returns exactly the nine canonical names', () => {
+  it('returns exactly the twelve canonical names', () => {
     const names = mxToolNames();
-    expect(names).toHaveLength(CANONICAL_M1_TOOLS.length);
-    const expected = CANONICAL_M1_TOOLS.map((d) => d.name).sort();
+    expect(names).toHaveLength(CANONICAL_TOOLS.length);
+    const expected = CANONICAL_TOOLS.map((d) => d.name).sort();
     expect([...names].sort()).toEqual(expected);
   });
 
@@ -28,8 +28,8 @@ describe('mxToolNames()', () => {
     }
   });
 
-  it('count matches CANONICAL_M1_TOOLS.length', () => {
-    expect(mxToolNames()).toHaveLength(CANONICAL_M1_TOOLS.length);
+  it('count matches CANONICAL_TOOLS.length', () => {
+    expect(mxToolNames()).toHaveLength(CANONICAL_TOOLS.length);
   });
 
   it('each call returns a fresh array (not the same reference)', () => {
@@ -39,7 +39,7 @@ describe('mxToolNames()', () => {
 
 describe('isMxToolName()', () => {
   it('returns true for every canonical mx_* verb', () => {
-    for (const descriptor of CANONICAL_M1_TOOLS) {
+    for (const descriptor of CANONICAL_TOOLS) {
       expect(isMxToolName(descriptor.name)).toBe(true);
     }
   });

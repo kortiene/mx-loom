@@ -16,9 +16,13 @@ export type { ToolDescriptor, JsonSchema, AsyncSemantics } from './descriptor.js
 export { loadRegistry, DescriptorValidationError } from './registry.js';
 export type { ToolRegistry } from './registry.js';
 
-// The canonical M1 descriptor set (+ the individual descriptor consts).
+// The canonical descriptor sets (+ the individual descriptor consts). `CANONICAL_TOOLS`
+// is the full 12-verb superset every binding/loader defaults to; `CANONICAL_M1_TOOLS`
+// (9) and `CANONICAL_M3_TASK_TOOLS` (3) are documented subsets.
 export {
+  CANONICAL_TOOLS,
   CANONICAL_M1_TOOLS,
+  CANONICAL_M3_TASK_TOOLS,
   MX_FIND_AGENTS,
   MX_DESCRIBE_AGENT,
   MX_DELEGATE_TOOL,
@@ -28,6 +32,9 @@ export {
   MX_GET_CONTEXT,
   MX_CANCEL,
   MX_WORKSPACE_STATUS,
+  MX_CREATE_TASK,
+  MX_UPDATE_TASK,
+  MX_LIST_TASKS,
 } from './descriptors/index.js';
 
 // The JSON Schema validation seam (Ajv-backed by default; injectable).
@@ -155,4 +162,36 @@ export type {
   WorkspaceStatusResult,
   WorkspaceMeta,
   ProjectContext,
+} from './handlers/index.js';
+
+// The task-DAG handlers (T301): `mx_create_task` + `mx_update_task` + `mx_list_tasks`
+// — the M3 first deliverable letting cognition author and read the durable shared
+// plan (the `com.mxagent.task.v1` DAG). Create/update map to `task.create`/`task.update`
+// (signed mutations → `ok(TaskNode, audit_ref)`; the two mutators carry an
+// `idempotency_key` and author — never dispatch (T303) — a node's signed `action`);
+// list maps to `task.list` (+ derived/`task.graph` edges → `ok({ tasks, edges? },
+// EMPTY_AUDIT_REF)`) so "list reflects the DAG". The state transition is the daemon's
+// job; the handlers forward the target state and surface the daemon's mapped result.
+// Plus the pure non-secret task projectors + the `mapTaskState` table (the issue's
+// "map states") + the `TaskNode`/`TaskEdge`/`TaskState`/`TaskAction` types.
+export { mxCreateTask, mxUpdateTask, mxListTasks } from './handlers/index.js';
+export {
+  projectTaskNode,
+  projectTaskEdge,
+  mapTaskState,
+  deriveEdges,
+  mergeEdges,
+  taskNodeResponseToResult,
+  TASK_STATES,
+  TASK_STATE_OUTPUTS,
+} from './handlers/index.js';
+export type {
+  CreateTaskInput,
+  UpdateTaskInput,
+  ListTasksInput,
+  ListTasksResult,
+  TaskNode,
+  TaskEdge,
+  TaskState,
+  TaskAction,
 } from './handlers/index.js';

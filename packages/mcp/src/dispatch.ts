@@ -1,9 +1,9 @@
 /**
  * The dispatch table (T109) — tool name → registry handler.
  *
- * The registry exports {@link CANONICAL_M1_TOOLS} for *listing* but no execution
+ * The registry exports {@link CANONICAL_TOOLS} for *listing* but no execution
  * router; T109 builds the one central map from a descriptor `name` to its
- * `(input, deps) => Promise<ToolResult>` handler. Because all nine handlers share
+ * `(input, deps) => Promise<ToolResult>` handler. Because all twelve handlers share
  * that shape and **never throw**, the router is uniform: look up by name, build
  * the handler's `deps` subtype from the {@link BindingContext}, call it, get a
  * {@link ToolResult}.
@@ -21,45 +21,54 @@
  * `errored('not_found', …)` envelope — never a thrown exception (the model asked
  * for a verb we do not surface).
  *
- * No authority surface is reachable: the table is keyed only by the nine
- * `CANONICAL_M1_TOOLS` names, so `trust.*` / `approval.decide` / `policy.*` /
+ * No authority surface is reachable: the table is keyed only by the twelve
+ * `CANONICAL_TOOLS` names, so `trust.*` / `approval.decide` / `policy.*` /
  * `auth.*` / `device.*` / `daemon.*` are structurally absent.
  */
 import {
   MX_AWAIT_RESULT,
   MX_CANCEL,
+  MX_CREATE_TASK,
   MX_DELEGATE_TOOL,
   MX_DESCRIBE_AGENT,
   MX_FIND_AGENTS,
   MX_GET_CONTEXT,
+  MX_LIST_TASKS,
   MX_RUN_COMMAND,
   MX_SHARE_CONTEXT,
+  MX_UPDATE_TASK,
   MX_WORKSPACE_STATUS,
   errored,
   mxAwaitResult,
   mxCancel,
+  mxCreateTask,
   mxDelegateTool,
   mxDescribeAgent,
   mxFindAgents,
   mxGetContext,
+  mxListTasks,
   mxRunCommand,
   mxShareContext,
+  mxUpdateTask,
   mxWorkspaceStatus,
 } from '@mx-loom/registry';
 import type {
   AuditRef,
   AwaitResultInput,
   CancelInput,
+  CreateTaskInput,
   DelegateDeps,
   DelegateToolInput,
   DescribeAgentInput,
   FindAgentsInput,
   GetContextInput,
   HandlerDeps,
+  ListTasksInput,
   RoomScopedDeps,
   RunCommandInput,
   ShareContextInput,
   ToolResult,
+  UpdateTaskInput,
   WorkspaceStatusInput,
 } from '@mx-loom/registry';
 
@@ -98,9 +107,9 @@ const delegateDeps = (ctx: BindingContext): DelegateDeps => ({
 });
 
 /**
- * The single name → handler map, built once over the nine canonical verbs. Keyed
+ * The single name → handler map, built once over the twelve canonical verbs. Keyed
  * by the descriptor `name` (the single source) so the surfaced set can never drift
- * from {@link CANONICAL_M1_TOOLS}.
+ * from {@link CANONICAL_TOOLS}.
  */
 export const DISPATCH: Readonly<Record<string, DispatchEntry>> = Object.freeze({
   // `args` is an open `Record<string, unknown>` (the model's input); each handler
@@ -115,6 +124,12 @@ export const DISPATCH: Readonly<Record<string, DispatchEntry>> = Object.freeze({
   [MX_SHARE_CONTEXT.name]: (args, ctx) => mxShareContext(args as unknown as ShareContextInput, roomScopedDeps(ctx)),
   [MX_GET_CONTEXT.name]: (args, ctx) => mxGetContext(args as unknown as GetContextInput, roomScopedDeps(ctx)),
   [MX_WORKSPACE_STATUS.name]: (args, ctx) => mxWorkspaceStatus(args as unknown as WorkspaceStatusInput, roomScopedDeps(ctx)),
+  // M3 (T301) — the task-DAG verbs. All three are room-scoped (the DAG is
+  // workspace-scoped); the mutators fail-fast on a missing room, the read is
+  // best-effort, so `roomScopedDeps` serves all three.
+  [MX_CREATE_TASK.name]: (args, ctx) => mxCreateTask(args as unknown as CreateTaskInput, roomScopedDeps(ctx)),
+  [MX_UPDATE_TASK.name]: (args, ctx) => mxUpdateTask(args as unknown as UpdateTaskInput, roomScopedDeps(ctx)),
+  [MX_LIST_TASKS.name]: (args, ctx) => mxListTasks(args as unknown as ListTasksInput, roomScopedDeps(ctx)),
 });
 
 /**

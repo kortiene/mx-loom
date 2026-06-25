@@ -36,7 +36,7 @@ export type { CreateMcpServerOptions } from './server.js';
 export { createBindingContext } from './context.js';
 export type { BindingContext, CreateBindingContextOptions } from './context.js';
 
-// The tool generator — `CANONICAL_M1_TOOLS` → MCP `Tool[]` (verbatim JSON Schema).
+// The tool generator — `CANONICAL_TOOLS` → MCP `Tool[]` (verbatim JSON Schema).
 export { buildToolList, ASYNC_SEMANTICS_META_KEY } from './tools.js';
 
 // The envelope serializer — `ToolResult` → MCP `CallToolResult` (the AC2/AC3 crux).

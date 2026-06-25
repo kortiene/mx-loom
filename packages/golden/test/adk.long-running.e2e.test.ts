@@ -40,7 +40,7 @@ import { fileURLToPath } from 'node:url';
 import { promisify } from 'node:util';
 
 import {
-  CANONICAL_M1_TOOLS,
+  CANONICAL_TOOLS,
   isForbiddenAuthorityVerb,
   validateEnvelope,
   type ToolResult,
@@ -644,7 +644,7 @@ describe.skipIf(skipAdkLong)('T202 e2e · Google ADK LongRunningFunctionTool app
   it('builds an ADK tool bundle with exactly one canonical long-running wrapper per deferred verb', () => {
     expect(probe.agent_name).toBe('mx_adk_long_running_e2e_agent');
 
-    const canonicalNames = CANONICAL_M1_TOOLS.map((d) => d.name).sort();
+    const canonicalNames = CANONICAL_TOOLS.map((d) => d.name).sort();
     expect([...probe.tool_names].sort()).toEqual(canonicalNames);
     expect(probe.tool_names.filter((name) => name === 'mx_delegate_tool')).toHaveLength(1);
     expect(probe.tool_names.filter((name) => name === 'mx_run_command')).toHaveLength(1);

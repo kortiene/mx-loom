@@ -2,7 +2,7 @@
  * The tool generator (T205) — canonical descriptors → Pi `ToolDefinition[]`.
  *
  * The core of the Pi binding. {@link createPiToolDefinitions} enumerates
- * {@link CANONICAL_M1_TOOLS} and produces one Pi {@link ToolDefinition} per
+ * {@link CANONICAL_TOOLS} and produces one Pi {@link ToolDefinition} per
  * descriptor, ready for `createAgentSession({ customTools })` or
  * {@link import('./register.js').registerMxTools}. **Generated, never
  * hand-authored**: adding a tenth canonical descriptor surfaces it in Pi with no
@@ -39,7 +39,7 @@
  */
 import { withAudit } from '@mx-loom/audit';
 import type { AuditTap } from '@mx-loom/audit';
-import { CANONICAL_M1_TOOLS, createAjvValidator, errored } from '@mx-loom/registry';
+import { CANONICAL_TOOLS, createAjvValidator, errored } from '@mx-loom/registry';
 import type { CompiledSchema, SchemaValidator, ToolDescriptor, ToolResult } from '@mx-loom/registry';
 
 import type { BindingContext } from './context.js';
@@ -70,7 +70,7 @@ export interface CreatePiToolDefinitionsOptions {
    * `ctx.auditSink`, fixed with the session `correlation_id`.
    */
   auditTap?: AuditTap;
-  /** The descriptor set to generate from. Default {@link CANONICAL_M1_TOOLS} (tests only). */
+  /** The descriptor set to generate from. Default {@link CANONICAL_TOOLS} (tests only). */
   descriptors?: readonly ToolDescriptor[];
 }
 
@@ -180,7 +180,7 @@ function buildToolDefinition(
 }
 
 /**
- * Build the generated Pi {@link ToolDefinition}[] for the nine canonical `mx_*`
+ * Build the generated Pi {@link ToolDefinition}[] for the twelve canonical `mx_*`
  * verbs, bound to a secret-free {@link BindingContext}.
  *
  * @throws {PiSchemaConversionError} at build time if a descriptor's `input_schema`
@@ -198,7 +198,7 @@ export function createPiToolDefinitions(
       ctx.auditSink,
       ctx.correlationId !== undefined ? { correlation_id: ctx.correlationId } : {},
     );
-  const descriptors = options.descriptors ?? CANONICAL_M1_TOOLS;
+  const descriptors = options.descriptors ?? CANONICAL_TOOLS;
 
   return descriptors.map((descriptor) =>
     buildToolDefinition(descriptor, ctx, tap, validator, options.builders, convert),

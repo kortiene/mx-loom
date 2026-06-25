@@ -1,10 +1,17 @@
 /**
- * The canonical M1 descriptor set (design §8) — the static, frozen `mx_*` verbs
- * the Delegation MVP surfaces. T101 authored the **7 P0** verbs; T108 adds the
- * **2 P1** verbs (`mx_cancel` / `mx_workspace_status`) alongside their handlers, so
- * the canonical M1 model-facing set is now **9** tools.
+ * The canonical descriptor set (design §2, §8) — the static, frozen `mx_*` verbs the
+ * fabric surfaces. T101 authored the **7 P0** M1 verbs; T108 added the **2 P1** M1
+ * verbs (`mx_cancel` / `mx_workspace_status`), completing the **9-verb M1** surface;
+ * T301 adds the **3 M3** task-DAG verbs (`mx_create_task` / `mx_update_task` /
+ * `mx_list_tasks`), bringing the full enumerable set to **12**.
  *
- * Metadata only — handler behavior is T104–T108.
+ * Two named sets live here:
+ *  - {@link CANONICAL_M1_TOOLS} — the 9 M1 verbs (a documented, back-compat subset).
+ *  - {@link CANONICAL_TOOLS} — the full 12-verb superset (the 9 M1 verbs + the 3 M3
+ *    task verbs). This is what `loadRegistry()` and every binding generator default
+ *    to, so the task verbs surface through MCP / Claude / Pi from one source.
+ *
+ * Metadata only — handler behavior lives in `src/handlers/`.
  */
 import { deepFreeze } from '../freeze.js';
 import type { ToolDescriptor } from '../descriptor.js';
@@ -18,6 +25,9 @@ import { MX_SHARE_CONTEXT } from './share-context.js';
 import { MX_GET_CONTEXT } from './get-context.js';
 import { MX_CANCEL } from './cancel.js';
 import { MX_WORKSPACE_STATUS } from './workspace-status.js';
+import { MX_CREATE_TASK } from './create-task.js';
+import { MX_UPDATE_TASK } from './update-task.js';
+import { MX_LIST_TASKS } from './list-tasks.js';
 
 export {
   MX_FIND_AGENTS,
@@ -29,10 +39,17 @@ export {
   MX_GET_CONTEXT,
   MX_CANCEL,
   MX_WORKSPACE_STATUS,
+  MX_CREATE_TASK,
+  MX_UPDATE_TASK,
+  MX_LIST_TASKS,
 };
 
-/** The canonical M1 descriptor set, in stable order. Frozen. The 7 P0 verbs (T101)
- *  followed by the 2 P1 verbs (T108). */
+/**
+ * The canonical **M1** descriptor set, in stable order. Frozen. The 7 P0 verbs (T101)
+ * followed by the 2 P1 verbs (T108). Kept as a documented subset for back-compat
+ * (and the M1-surface drift guards); the full set the registry loads is
+ * {@link CANONICAL_TOOLS}.
+ */
 export const CANONICAL_M1_TOOLS: readonly ToolDescriptor[] = deepFreeze([
   MX_FIND_AGENTS,
   MX_DESCRIBE_AGENT,
@@ -43,4 +60,25 @@ export const CANONICAL_M1_TOOLS: readonly ToolDescriptor[] = deepFreeze([
   MX_GET_CONTEXT,
   MX_CANCEL,
   MX_WORKSPACE_STATUS,
+]);
+
+/**
+ * The **3 M3 task-DAG** verbs (T301), in stable order. Frozen. A documented subset
+ * (the M3 first deliverable); the full enumerable set is {@link CANONICAL_TOOLS}.
+ */
+export const CANONICAL_M3_TASK_TOOLS: readonly ToolDescriptor[] = deepFreeze([
+  MX_CREATE_TASK,
+  MX_UPDATE_TASK,
+  MX_LIST_TASKS,
+]);
+
+/**
+ * The full canonical descriptor set, in stable order. Frozen. The 9 M1 verbs
+ * followed by the 3 M3 task verbs (**12 total**). This is the default for
+ * `loadRegistry()` and every binding generator (MCP / Claude / Pi), so a single
+ * descriptor set drives the model-facing surface across every runtime.
+ */
+export const CANONICAL_TOOLS: readonly ToolDescriptor[] = deepFreeze([
+  ...CANONICAL_M1_TOOLS,
+  ...CANONICAL_M3_TASK_TOOLS,
 ]);
