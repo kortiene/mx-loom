@@ -1,0 +1,31 @@
+# Conformance runner pod. node 22 (Pi binding needs >=22.19) on Debian trixie
+# (glibc 2.41 >= 2.38, required by the mx-agent v0.2.1 `*-linux-gnu` binary;
+# bookworm/Ubuntu-22.04 glibc 2.35 FAILS). privileged for bubblewrap (the
+# `--unshare-all` exec sandbox); an EXTERNAL resolver because pods here have no
+# upstream DNS via CoreDNS (so the pod clones GitHub / npm by name but reaches
+# in-cluster services by ClusterIP — see README.md); tini as PID 1 so the
+# daemon's double-fork detach-parents are reaped. Stays alive for `kubectl exec`.
+apiVersion: v1
+kind: Pod
+metadata: { name: mxl-runner, namespace: mx-golden, labels: { app: mxl-runner } }
+spec:
+  restartPolicy: Never
+  dnsPolicy: None
+  dnsConfig: { nameservers: ["1.1.1.1", "8.8.8.8"] }
+  containers:
+    - name: runner
+      image: node:22-trixie
+      securityContext: { privileged: true }
+      workingDir: /work
+      command: ["bash", "-lc"]
+      args:
+        - |
+          set -e
+          export DEBIAN_FRONTEND=noninteractive
+          apt-get update -qq
+          apt-get install -y -qq tini git curl ca-certificates bubblewrap jq >/dev/null
+          mkdir -p /work
+          exec tini -g -- sleep infinity
+      resources:
+        requests: { cpu: "500m", memory: "1Gi" }
+        limits: { cpu: "4", memory: "6Gi" }
