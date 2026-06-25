@@ -13,10 +13,10 @@ policy-enforced way to find each other and delegate work.
 > **cognition** (each runtime's reasoning) into one fabric of **coordination** (the mx-agent
 > mesh). **Cognition is pluggable; coordination is the constant.**
 
-> **Status — active implementation (2026-06).** M0 and the M1 tool/binding/golden
-> gate are in place, with live daemon/model verification still explicitly gated where
-> noted. M2 universal-binding work is underway; T204 has decided Pi's integration path:
-> native tool registration, not direct MCP mounting. See
+> **Status — active implementation (2026-06).** M0 and M1 (delegation MVP, both
+> bindings, golden gate) are complete; **M2 (universal binding) is complete** —
+> ADK, OpenCode, Pi, and the per-runtime integration guide are all landed, with live
+> daemon/model verification still explicitly gated where noted. See
 > [`docs/mx-agent-tool-fabric-design.md`](docs/mx-agent-tool-fabric-design.md) and
 > [`docs/backlog.md`](docs/backlog.md).
 
@@ -63,7 +63,7 @@ it can reach, not by anything it decides about itself.
 | **`mx-loom`** *(this repo)* | The portable **tool layer** that weaves external runtimes into the mx-agent fabric. |
 | `mx-agency` | An AI software **agency** platform built on top of the fabric (roles, intake, dashboards). Consumes `mx-loom` behind its `app/src/sdk` seam. |
 
-## Supported runtimes (planned)
+## Supported runtimes
 
 - **Google ADK** — `MCPToolset` + `LongRunningFunctionTool` (approval-aware).
 - **Claude Agent SDK** — in-process `createSdkMcpServer` + `tool()`, with `canUseTool` for HITL.
@@ -72,13 +72,16 @@ it can reach, not by anything it decides about itself.
 - **Custom** — any runner that speaks MCP or can accept a JSON-Schema tool list.
 
 One canonical descriptor set generates every binding; bindings are never hand-authored per
-runtime.
+runtime. For the copy-pasteable setup per runtime, see the
+[Runtime integration guide](docs/runtime-integration.md).
 
 ## Documentation
 
+- [Runtime integration guide](docs/runtime-integration.md) — one copy-pasteable setup per runtime (ADK / Claude / OpenCode / Pi / custom)
 - [Design — MX-Agent as the Coordination Fabric](docs/mx-agent-tool-fabric-design.md)
 - [Implementation backlog](docs/backlog.md)
 - [Pi tool-surface capability decision (T204)](docs/pi-tool-surface-capability.md)
+- [Examples index](examples/README.md)
 
 ## Building mx-loom (the `adw_sdlc` harness)
 
