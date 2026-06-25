@@ -8,9 +8,19 @@
 # Jobs (cheap → expensive):
 #   1. structure   — always: install, typecheck, fast suite, and a daemon-free
 #                    conformance load (proves the suite is wired + skips cleanly).
+#                    Also typechecks the golden gate, runs its daemon-free unit
+#                    suites (incl. the T206 portability-matrix logic), and proves
+#                    every e2e arm (incl. portability-matrix.e2e) skips cleanly.
 #   2. live        — Tier 0/1 against a single live daemon (MXL_CONFORMANCE=1).
 #   3. delegate    — Tier 2 `call.start` against a two-daemon fixture
 #                    (MXL_CONFORMANCE_TWO_DAEMON=1).
+#   4. golden      — the M1-exit GOLDEN gate (both bindings, approval-gated).
+#   5. portability — the M2-exit PORTABILITY MATRIX (T206): the same golden
+#                    (subset) scenario under Pi + ADK + OpenCode from one
+#                    descriptor set (MXL_PORTABILITY_MATRIX=1 + the three
+#                    per-runtime opt-ins + their toolchains). Heavy (three
+#                    runtimes); `workflow_dispatch`-only via run_portability, so a
+#                    missing-toolchain run can never paint main/PRs red.
 #
 # The pin (.mx-agent-version) is the single source of truth — never hard-code the
 # tag. `workflow_dispatch` exposes a `version` input so a pin-bump PR can run the
@@ -54,6 +64,11 @@ on:
         default: false
       run_audit_pg:
         description: Also assert the golden audit arm against a live Postgres mirror (MXL_AUDIT_PG=1)
+        required: false
+        type: boolean
+        default: false
+      run_portability:
+        description: Run the M2-exit PORTABILITY MATRIX (T206 — same scenario under Pi/ADK/OpenCode)
         required: false
         type: boolean
         default: false
@@ -265,6 +280,88 @@ jobs:
           # Audit arm: assert the live Postgres mirror only when explicitly opted in.
           MXL_AUDIT_PG: ${{ inputs.run_audit_pg && '1' || '' }}
           MXL_AUDIT_PG_DSN: ${{ inputs.run_audit_pg && 'postgres://postgres:postgres@127.0.0.1:5432/mx_audit' || '' }}
+        run: pnpm --filter @mx-loom/golden test:e2e
+      - name: Teardown (always; scrub before any upload)
+        if: always()
+        run: scripts/conformance/down.sh
+
+  # ---------------------------------------------------------------------------
+  # PORTABILITY MATRIX — the M2 exit gate (T206 / #28). The same golden (subset)
+  # scenario runs under Pi (native binding), ADK (LongRunningFunctionTool shim),
+  # and OpenCode (MCP entry) from ONE descriptor set, asserting a single
+  # cross-runtime invariant: the same nine `mx_*` descriptors surface everywhere
+  # (no authority verb) and every in-scope step produces the same terminal
+  # status/error-code. Heavy: three runtimes + two daemons in one job (Python +
+  # google-adk and the `opencode` binary alongside the live golden fixture). Pi
+  # rides the inline TypeBox shim unless MXL_PI_PACKAGE_ROOT is provided. Gated
+  # `workflow_dispatch`-only behind run_portability so a missing-toolchain run can
+  # never paint main/PRs red; when dispatched, a missing runtime/daemon is a HARD
+  # failure (MXL_PORTABILITY_MATRIX=1 → fail-not-skip). May run as its own dispatch
+  # rather than always alongside `golden`.
+  # ---------------------------------------------------------------------------
+  portability:
+    runs-on: ubuntu-latest
+    needs: [pin, live]
+    if: github.event_name == 'workflow_dispatch' && inputs.run_portability
+    env:
+      MX_AGENT_VERSION: ${{ needs.pin.outputs.version }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: pnpm
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: pnpm install --frozen-lockfile
+
+      # Toolchains for the ADK + OpenCode rows (the Pi row uses the inline TypeBox
+      # shim unless MXL_PI_PACKAGE_ROOT is set, so it needs no extra install).
+      - name: Install Google ADK (Python)
+        run: |
+          set -euo pipefail
+          python -m pip install --upgrade pip
+          python -m pip install -r examples/adk/requirements.txt
+      - name: Install the opencode binary
+        run: |
+          set -euo pipefail
+          curl -fsSL https://opencode.ai/install | bash
+          echo "$HOME/.opencode/bin" >> "$GITHUB_PATH"
+
+      - name: Install pinned mx-agent binary
+        run: scripts/conformance/install-mx-agent.sh "$MX_AGENT_VERSION"
+      - name: Bring up homeserver + daemon A
+        id: bootstrap_a
+        run: scripts/conformance/bootstrap-daemon-a.sh
+      - name: Bring up daemon B + GOLDEN policy + approval tool + exec-enable + coordinates
+        id: bootstrap_b
+        env:
+          POLICY_FIXTURE: policy.golden.toml
+          MXL_CONFORMANCE_ROOM: ${{ steps.bootstrap_a.outputs.room }}
+          MXL_CONFORMANCE_SENDER_AGENT: ${{ steps.bootstrap_a.outputs.sender_agent }}
+        run: scripts/conformance/bootstrap-daemon-b.sh
+
+      - name: Run the PORTABILITY MATRIX (Pi + ADK + OpenCode, same descriptors)
+        env:
+          # Demand the full three-runtime matrix (fail-not-skip).
+          MXL_PORTABILITY_MATRIX: '1'
+          # The golden two-daemon fixture (reused verbatim from the `golden` job).
+          MXL_CONFORMANCE_TWO_DAEMON: '1'
+          MXL_CONFORMANCE_GOLDEN_POLICY: '1'
+          MXL_CONFORMANCE_SOCKET: ${{ steps.bootstrap_a.outputs.socket }}
+          MXL_CONFORMANCE_ROOM: ${{ steps.bootstrap_a.outputs.room }}
+          MXL_CONFORMANCE_TARGET_AGENT: ${{ steps.bootstrap_b.outputs.agent }}
+          MXL_CONFORMANCE_TOOL: ${{ steps.bootstrap_b.outputs.tool }}
+          MXL_CONFORMANCE_DENIED_TOOL: ${{ steps.bootstrap_b.outputs.denied_tool }}
+          MXL_CONFORMANCE_APPROVAL_TOOL: ${{ steps.bootstrap_b.outputs.approval_tool }}
+          MXL_CONFORMANCE_ALLOWED_COMMAND: ${{ steps.bootstrap_b.outputs.allowed_command }}
+          MXL_CONFORMANCE_ALLOW_CWD: ${{ steps.bootstrap_b.outputs.allow_cwd }}
+          # The three per-runtime opt-ins (every one required when demanded).
+          MXL_PI_BINDING_E2E: '1'
+          MXL_ADK_LONG_RUNNING_E2E: '1'
+          MXL_OPENCODE_MCP_E2E: '1'
         run: pnpm --filter @mx-loom/golden test:e2e
       - name: Teardown (always; scrub before any upload)
         if: always()

@@ -36,18 +36,16 @@
  *
  * This test is the building block T206 (cross-runtime Pi portability arm) uses.
  */
-import { existsSync, mkdtempSync, readFileSync, rmSync } from 'node:fs';
-import { createRequire } from 'node:module';
+import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { dirname, join, resolve } from 'node:path';
-import { fileURLToPath, pathToFileURL } from 'node:url';
+import { join } from 'node:path';
 
 import { NullAuditSink } from '@mx-loom/audit';
 import {
   createPiBindingContext,
   createPiToolDefinitions,
 } from '@mx-loom/pi';
-import type { BindingContext, ToolDefinition, TypeBoxBuilders } from '@mx-loom/pi';
+import type { BindingContext, ToolDefinition } from '@mx-loom/pi';
 import {
   CANONICAL_M1_TOOLS,
   isForbiddenAuthorityVerb,
@@ -62,120 +60,16 @@ import {
   isTwoDaemonRequired,
   resolveDaemonSocket,
 } from './_golden-harness.js';
+import { PI_PACKAGE_ROOT_ENV, resolvePiBuilders, resolvePiPackageRoot } from './_pi-builders.js';
 
 // ---------------------------------------------------------------------------
 // Env flags
 // ---------------------------------------------------------------------------
 
 const PI_E2E_ENV = 'MXL_PI_BINDING_E2E';
-const PI_PACKAGE_ROOT_ENV = 'MXL_PI_PACKAGE_ROOT';
 
-// ---------------------------------------------------------------------------
-// Pi SDK resolution (mirrors t204-pi-capability.e2e.test.ts)
-// ---------------------------------------------------------------------------
-
-const repoRoot = fileURLToPath(new URL('../../../', import.meta.url));
-const packageRequire = createRequire(resolve(repoRoot, 'package.json'));
-
-interface ResolvedPiPackage {
-  readonly root: string | null;
-  readonly source: 'env' | 'workspace-dependency' | 'absent';
-}
-
-function resolvePiPackageRoot(env: NodeJS.ProcessEnv = process.env): ResolvedPiPackage {
-  const explicit = env[PI_PACKAGE_ROOT_ENV];
-  if (explicit !== undefined && explicit.trim() !== '') {
-    return { root: resolve(explicit), source: 'env' };
-  }
-  try {
-    const entry = packageRequire.resolve('@earendil-works/pi-coding-agent');
-    let dir = dirname(entry);
-    while (dir !== dirname(dir)) {
-      const manifest = join(dir, 'package.json');
-      if (existsSync(manifest)) {
-        const parsed = JSON.parse(readFileSync(manifest, 'utf8')) as { name: string };
-        if (parsed.name === '@earendil-works/pi-coding-agent') {
-          return { root: dir, source: 'workspace-dependency' };
-        }
-      }
-      dir = dirname(dir);
-    }
-  } catch {
-    // Pi not installed — acceptable for the clean-skip path.
-  }
-  return { root: null, source: 'absent' };
-}
-
-function resolveDependencyEntry(root: string, packageName: string, relativeEntry: string): string | null {
-  const segments = packageName.split('/');
-  let dir = root;
-  while (true) {
-    const candidate = join(dir, 'node_modules', ...segments, relativeEntry);
-    if (existsSync(candidate)) return candidate;
-    const parent = dirname(dir);
-    if (parent === dir) return null;
-    dir = parent;
-  }
-}
-
-interface TypeBoxRuntime {
-  readonly Type: {
-    Object(properties: Record<string, unknown>, options?: Record<string, unknown>): unknown;
-    Optional(schema: unknown): unknown;
-    String(options?: Record<string, unknown>): unknown;
-    Integer(options?: Record<string, unknown>): unknown;
-    Number(options?: Record<string, unknown>): unknown;
-    Boolean(options?: Record<string, unknown>): unknown;
-    Array(items: unknown, options?: Record<string, unknown>): unknown;
-  };
-}
-interface PiAiRuntime {
-  StringEnum(values: readonly string[], options?: Record<string, unknown>): unknown;
-}
-
-async function importTypebox(root: string): Promise<TypeBoxRuntime> {
-  const requireFromPi = createRequire(join(root, 'package.json'));
-  return (await import(pathToFileURL(requireFromPi.resolve('typebox')).href)) as TypeBoxRuntime;
-}
-
-async function importPiAi(root: string): Promise<PiAiRuntime> {
-  const entry = resolveDependencyEntry(root, '@earendil-works/pi-ai', join('dist', 'index.js'));
-  if (entry === null) {
-    throw new Error(
-      'T205 Pi binding e2e cannot find @earendil-works/pi-ai/dist/index.js from the Pi package root',
-    );
-  }
-  return (await import(pathToFileURL(entry).href)) as PiAiRuntime;
-}
-
-// ---------------------------------------------------------------------------
-// Inline fake TypeBox builders (ABI-shaped shim, mirrors pi/test/helpers.ts).
-// Used when Pi SDK is not installed but the daemon-call path still runs.
-// ---------------------------------------------------------------------------
-
-const OPTIONAL = Symbol('optional');
-
-const INLINE_FAKE_BUILDERS: TypeBoxBuilders = {
-  Type: {
-    Object(properties, options = {}) {
-      const required = Object.entries(properties)
-        .filter(([, schema]) => !(schema as Record<symbol, unknown>)[OPTIONAL])
-        .map(([key]) => key);
-      return { type: 'object', properties, ...(required.length > 0 ? { required } : {}), ...options };
-    },
-    Optional(schema) {
-      return { ...(schema as Record<string, unknown>), [OPTIONAL]: true };
-    },
-    String(options = {}) { return { type: 'string', ...options }; },
-    Integer(options = {}) { return { type: 'integer', ...options }; },
-    Number(options = {}) { return { type: 'number', ...options }; },
-    Boolean(options = {}) { return { type: 'boolean', ...options }; },
-    Array(items, options = {}) { return { type: 'array', items, ...options }; },
-  },
-  StringEnum(values, options = {}) {
-    return { type: 'string', enum: [...values], ...options };
-  },
-};
+// Pi SDK resolution + the TypeBox-builder seam now live in the shared
+// `_pi-builders.ts` (also consumed by the T206 portability matrix's Pi arm).
 
 // ---------------------------------------------------------------------------
 // Fixture coordinates (same env vars as T201 ADK / T114 golden)
@@ -262,12 +156,7 @@ describe.skipIf(skipPiBinding)('T205 e2e · @mx-loom/pi — Pi agent calls mx_de
     // -----------------------------------------------------------------------
     // TypeBox builders: use real Pi TypeBox when available, else inline shim.
     // -----------------------------------------------------------------------
-    let builders: TypeBoxBuilders = INLINE_FAKE_BUILDERS;
-    if (resolvedPi.root !== null) {
-      const { Type } = await importTypebox(resolvedPi.root);
-      const { StringEnum } = await importPiAi(resolvedPi.root);
-      builders = { Type, StringEnum } as TypeBoxBuilders;
-    }
+    const { builders } = await resolvePiBuilders(resolvedPi);
 
     // -----------------------------------------------------------------------
     // Live binding context: open an MxSession (agent.register + heartbeat).

@@ -45,10 +45,17 @@ import type {
 } from '@mx-loom/claude';
 import type { BindingContext } from '@mx-loom/mcp';
 import { createMcpServer } from '@mx-loom/mcp';
+import { createPiBindingContext, createPiToolDefinitions } from '@mx-loom/pi';
+import type {
+  BindingContext as PiBindingContext,
+  ToolDefinition as PiToolDefinition,
+  TypeBoxBuilders,
+} from '@mx-loom/pi';
 import type { DaemonCall, ToolResult } from '@mx-loom/registry';
 import { createClient } from '@mx-loom/toolbelt';
 import type { MxClient } from '@mx-loom/toolbelt';
 
+import { INLINE_FAKE_BUILDERS } from './_pi-builders.js';
 import type { GoldenStep, ScenarioCoords } from './scenario.js';
 
 const execFileAsync = promisify(execFile);
@@ -479,6 +486,74 @@ export async function createGoldenClaudeArm(opts: {
     },
   };
   return { arm, mxClient, ctx, summaries };
+}
+
+/**
+ * A live Pi arm. Unlike {@link LiveArm}, it does NOT expose an `mxClient`: the Pi
+ * binding owns its `MxSession` inside `createPiBindingContext` and the matrix only
+ * needs the generated tools (for descriptor identity) and the `GoldenArm` (to drive
+ * the scenario). `close()` is `ctx.close()` — see the spec's OQ6 recommendation
+ * (omit `mxClient`; no new Pi export required).
+ */
+export interface LivePiArm {
+  readonly arm: GoldenArm;
+  /** The Pi binding context (its `close()` tears down the session this arm opened). */
+  readonly ctx: PiBindingContext;
+  /** The generated Pi `ToolDefinition[]` — used for the descriptor-identity invariant. */
+  readonly tools: readonly PiToolDefinition[];
+}
+
+/**
+ * Build the live Pi arm (T206): the @mx-loom/pi NATIVE binding, **model-free** —
+ * `createPiBindingContext` opens a real `MxSession` (`agent.register` + heartbeat),
+ * `createPiToolDefinitions` converts `CANONICAL_M1_TOOLS` → Pi `ToolDefinition[]`,
+ * and each `dispatch` calls `ToolDefinition.execute()` directly (exactly as the
+ * golden MCP/Claude arms dispatch `tools/call`). The full T102 envelope is carried
+ * verbatim in the Pi `AgentToolResult.details` channel, so the shared `runStep`
+ * hold→decide→resolve runner drives the **full S1–S8** through Pi natively.
+ *
+ * Deferred handles resolve via the `mx_await_result` `ToolDefinition` (Pi keeps
+ * deferred results model-driven — no hidden poll loop), so the held-step second leg
+ * works unchanged. The room ALWAYS comes from the session, never a model arg
+ * (`buildGoldenScenario` never puts a room in `step.args`). The arm shares the
+ * injected `auditSink`, so the AC4 emission count is assertable for the Pi row.
+ */
+export async function createGoldenPiArm(opts: {
+  room: string;
+  auditSink: AuditSink;
+  correlationId: string;
+  /** Real Pi TypeBox when resolvable (see `_pi-builders.ts`), else the inline shim. */
+  builders?: TypeBoxBuilders;
+}): Promise<LivePiArm> {
+  const ctx = await createPiBindingContext({
+    sessionOptions: { room: opts.room, kind: 'pi', correlationId: opts.correlationId },
+    auditSink: opts.auditSink,
+  });
+  const tools = createPiToolDefinitions(ctx, { builders: opts.builders ?? INLINE_FAKE_BUILDERS });
+  const byName = new Map(tools.map((t) => [t.name, t] as const));
+
+  const dispatch = async (tool: string, args: Record<string, unknown>): Promise<ToolResult> => {
+    const def = byName.get(tool);
+    if (def === undefined) throw new Error(`golden Pi arm: tool ${tool} not generated`);
+    const out = await def.execute(`golden-${tool}`, args);
+    // The full T102 envelope is carried verbatim in the `details` channel.
+    return out.details as ToolResult;
+  };
+
+  let closed = false;
+  const arm: GoldenArm = {
+    name: 'pi',
+    dispatch,
+    resolve(handle, waitMs) {
+      return dispatch('mx_await_result', { handle, wait_ms: waitMs });
+    },
+    async close() {
+      if (closed) return;
+      closed = true;
+      await ctx.close();
+    },
+  };
+  return { arm, ctx, tools };
 }
 
 // ---------------------------------------------------------------------------

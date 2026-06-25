@@ -173,7 +173,7 @@ scripts/conformance/down.sh
 Gating: `MXL_OPENCODE_MCP_E2E` unset → clean skip. Set but the `opencode` binary, a
 runnable `mx-loom-mcp` command, or the two-daemon fixture is missing → hard failure,
 never a misleading green. `MXL_OPENCODE_MCP_MODE=local|remote|both` (default `both`).
-T206 later folds this into the full M2 portability matrix.
+The T206 portability matrix (below) folds this into the M2 exit gate.
 
 ### T204 Pi capability smoke
 
@@ -209,6 +209,73 @@ MXL_PI_CAPABILITY_E2E=1 pnpm --filter @mx-loom/golden test:e2e
 # Cleanup: unset the opt-in variables; the test removes its temporary Pi config/session dir.
 unset MXL_PI_CAPABILITY_E2E MXL_PI_PACKAGE_ROOT
 ```
+
+### T206 portability matrix (the M2 exit gate)
+
+`test/portability-matrix.e2e.test.ts` is the issue #28 / T206 gate: the **same**
+binding-agnostic `scenario.ts` step table runs under **Pi, ADK, and OpenCode** from
+the **same** descriptor set, asserting a single cross-runtime invariant — "same
+descriptors must work everywhere." It is a *consumer/aggregator* of the existing
+canonical surfaces: no new model-facing tool, descriptor, envelope, or daemon-RPC.
+
+The matrix is **honest about per-runtime scope** (declared, never a silent skip):
+
+| Step | Pi (native) | ADK (long-running shim) | OpenCode (MCP) |
+|---|---|---|---|
+| Descriptor identity (9 `mx_*`, no authority) | ✓ | ✓ | ✓ (model-free) |
+| S1 `mx_find_agents` → `ok` | ✓ | ✓ | model-gated¹ |
+| S2 `mx_describe_agent` → `ok` | ✓ | ✓ | model-gated¹ |
+| S3 `mx_delegate_tool` ungated → `ok` + `audit_ref` | ✓ | ✓ | ✓ when `MXL_OPENCODE_MODEL`² |
+| S4 delegate → approve → `ok` | ✓ | ✓ | out-of-scope¹ |
+| S5 delegate → deny → `denied(approval_denied)` | ✓ | ✓ | out-of-scope¹ |
+| S6 `mx_run_command` → approve → `ok(exit_code)` | ✓ | ✓ | out-of-scope¹ |
+| S7 `mx_run_command` → `deny_args_regex` → `policy_denied` | ✓ | ✓ | out-of-scope¹ |
+| S8 delegate deny-by-default → `policy_denied` | ✓ | ✓ | out-of-scope¹ |
+
+¹ OpenCode exposes **no model-free tool-call surface** (T203 posture), so model-free
+OpenCode contributes the **descriptor-identity + surfacing** invariant only. ² With
+`MXL_OPENCODE_MODEL`, OpenCode drives S3 deterministically enough to assert the
+envelope; the held approval steps (S4–S6) are a documented **stretch**, never the gate.
+
+**Pi and ADK express the full S1–S8; OpenCode expresses descriptor identity always
+and S3 under a model** — exactly the issue's "(subset) golden test" wording.
+
+The fast, daemon-free matrix logic (capability shape, pass/fail reduction, the
+skip-clean/fail-not-skip gating, the descriptor-identity oracle) is unit-tested in
+`test/portability-matrix.test.ts` (run by `pnpm --filter @mx-loom/golden test`).
+
+```sh
+# Bring up the golden two-daemon fixture (as for the golden gate), install the ADK +
+# OpenCode toolchains, then demand the full three-runtime matrix.
+python3 -m venv .venv-adk && . .venv-adk/bin/activate
+python -m pip install -r examples/adk/requirements.txt
+curl -fsSL https://opencode.ai/install | bash   # installs ~/.opencode/bin/opencode
+
+MXL_PORTABILITY_MATRIX=1 \
+MXL_PI_BINDING_E2E=1 MXL_ADK_LONG_RUNNING_E2E=1 MXL_OPENCODE_MCP_E2E=1 \
+MXL_ADK_PYTHON="$PWD/.venv-adk/bin/python" \
+MXL_CONFORMANCE_TWO_DAEMON=1 MXL_CONFORMANCE_GOLDEN_POLICY=1 \
+MXL_CONFORMANCE_SOCKET=… MXL_CONFORMANCE_ROOM=… MXL_CONFORMANCE_TARGET_AGENT=… \
+MXL_CONFORMANCE_TOOL=… MXL_CONFORMANCE_APPROVAL_TOOL=… \
+MXL_CONFORMANCE_DENIED_TOOL=… MXL_CONFORMANCE_ALLOWED_COMMAND=… \
+  pnpm --filter @mx-loom/golden exec vitest run \
+  --config vitest.e2e.config.ts test/portability-matrix.e2e.test.ts
+```
+
+Gating: `MXL_PORTABILITY_MATRIX` unset **and** no per-runtime opt-in → clean skip.
+When demanded (`MXL_PORTABILITY_MATRIX=1`), a missing golden fixture or a missing
+per-runtime opt-in/toolchain is a **hard failure**, never a misleading green. With a
+single per-runtime opt-in set (and no `MXL_PORTABILITY_MATRIX`), only that row runs —
+useful for iterating one runtime locally. The Pi row prefers real Pi TypeBox
+(`MXL_PI_PACKAGE_ROOT`) and otherwise rides the inline ABI shim (the daemon round-trip
+is identical; the run logs which was used). In CI this is the `portability` job of
+`.github/workflows/conformance.yml` (`workflow_dispatch`-only via `run_portability`).
+T207's per-runtime integration guide cites this matrix as its verification source.
+
+Audit asymmetry: the in-process Pi row asserts the AC4 emission count via a shared
+`InMemoryAuditSink`; for ADK/OpenCode the audit tap runs inside the spawned
+`mx-loom-mcp` child (a different process), so those rows assert per-step terminal
+parity + the secret boundary, not a shared in-process row count.
 
 ### Optional flags
 
