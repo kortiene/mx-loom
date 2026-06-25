@@ -117,7 +117,7 @@ function makeFakeTaskDaemon(): DaemonCall {
           task_id: id,
           title: p['title'] ?? '',
           state: p['state'] ?? 'proposed',
-          assignee: p['assign'] ?? null,
+          assignee: p['assigned_to'] ?? null,
           depends_on: Array.isArray(p['depends_on']) ? p['depends_on'] : [],
           blocks: Array.isArray(p['blocks']) ? p['blocks'] : [],
           action: p['action'] ?? null,
@@ -146,7 +146,7 @@ function makeFakeTaskDaemon(): DaemonCall {
         const updated: Record<string, unknown> = {
           ...existing,
           ...(p['state'] !== undefined ? { state: p['state'] } : {}),
-          ...(p['assign'] !== undefined ? { assignee: p['assign'] } : {}),
+          ...(p['assigned_to'] !== undefined ? { assignee: p['assigned_to'] } : {}),
           ...(p['depends_on'] !== undefined ? { depends_on: p['depends_on'] } : {}),
           ...(p['blocks'] !== undefined ? { blocks: p['blocks'] } : {}),
           updated_at: '2026-06-25T12:00:00Z',
@@ -164,7 +164,7 @@ function makeFakeTaskDaemon(): DaemonCall {
       if (method === 'task.list') {
         const tasks = [...store.values()];
         const stateFilter = typeof p['state'] === 'string' ? p['state'] : undefined;
-        const assigneeFilter = typeof p['assignee'] === 'string' ? p['assignee'] : undefined;
+        const assigneeFilter = typeof p['assigned_to'] === 'string' ? p['assigned_to'] : undefined;
         const filtered = tasks.filter((t) => {
           if (stateFilter !== undefined && t['state'] !== stateFilter) return false;
           if (assigneeFilter !== undefined && t['assignee'] !== assigneeFilter) return false;
@@ -702,9 +702,14 @@ describe.skipIf(SKIP_TASK_LIVE)(
         if (!client) throw new Error('live MCP client not initialised');
 
         // -----------------------------------------------------------------------
-        // Step 1: Create task A (no deps) → ok + populated audit_ref.
-        // A live create emits a signed com.mxagent.task.v1 event on the room,
-        // so audit_ref.invocation_id must be populated (not null).
+        // Step 1: Create task A (no deps) → ok + a returned task_id.
+        // A live create IS a signed com.mxagent.task.v1 mutation, but v0.2.1's
+        // task.create reply carries NO audit anchor: no event_id/request_id, and
+        // invocation_id is the linked ACTION invocation — null for a planning task
+        // (create authors; dispatch is T303). So audit_ref is empty here. PINNED by
+        // the live two-daemon round-trip; re-strengthen to a populated anchor once
+        // the daemon returns the emitted event_id (kortiene/mx-agent#367). The proof
+        // the signed mutation landed is the returned task_id, asserted below.
         // -----------------------------------------------------------------------
         const aRaw = (await client.callTool({
           name: 'mx_create_task',
@@ -717,10 +722,10 @@ describe.skipIf(SKIP_TASK_LIVE)(
 
         expect(validateEnvelope(aEnv), 'task A: envelope must validate').toBe(true);
         expect(aEnv.status, 'task A: status must be ok').toBe('ok');
-        expect(
-          aEnv.audit_ref.invocation_id,
-          'task A: create is a signed mutation → populated invocation_id',
-        ).toBeTruthy();
+        // v0.2.1: the create reply carries no audit anchor (kortiene/mx-agent#367) →
+        // audit_ref is empty. validateEnvelope (above) already checks its shape; the
+        // populated-anchor assertion returns once the daemon surfaces the event id.
+        expect(aEnv.audit_ref.invocation_id, 'task A: v0.2.1 create reply has no invocation_id').toBeNull();
         expect(JSON.stringify(aRaw)).not.toMatch(SECRET_PATTERN);
 
         const aId = (aEnv.result as Record<string, unknown>).task_id as string;
@@ -741,10 +746,9 @@ describe.skipIf(SKIP_TASK_LIVE)(
 
         expect(validateEnvelope(bEnv), 'task B: envelope must validate').toBe(true);
         expect(bEnv.status, 'task B: status must be ok').toBe('ok');
-        expect(
-          bEnv.audit_ref.invocation_id,
-          'task B: create is a signed mutation → populated invocation_id',
-        ).toBeTruthy();
+        // v0.2.1: no audit anchor in the create reply (see task A; kortiene/mx-agent#367).
+        // The returned task_id (below) is the proof the signed mutation landed.
+        expect(bEnv.audit_ref.invocation_id, 'task B: v0.2.1 create reply has no invocation_id').toBeNull();
         expect(JSON.stringify(bRaw)).not.toMatch(SECRET_PATTERN);
 
         const bId = (bEnv.result as Record<string, unknown>).task_id as string;
@@ -790,8 +794,10 @@ describe.skipIf(SKIP_TASK_LIVE)(
         ).toBeDefined();
 
         // -----------------------------------------------------------------------
-        // Step 4: update B (state: executing) → ok + populated audit_ref.
-        // "update transitions state" — the other half of issue #30 AC.
+        // Step 4: update B (state: executing) → ok; "update transitions state" —
+        // the other half of issue #30 AC. Like create, v0.2.1's task.update reply
+        // carries no audit anchor (kortiene/mx-agent#367); the transition itself
+        // (and its persistence in step 5) is the AC, not a populated invocation_id.
         // -----------------------------------------------------------------------
         const updateRaw = (await client.callTool({
           name: 'mx_update_task',
@@ -805,10 +811,8 @@ describe.skipIf(SKIP_TASK_LIVE)(
 
         expect(validateEnvelope(updateEnv), 'update: envelope must validate').toBe(true);
         expect(updateEnv.status, 'update: status must be ok').toBe('ok');
-        expect(
-          updateEnv.audit_ref.invocation_id,
-          'update: signed mutation → populated invocation_id',
-        ).toBeTruthy();
+        // v0.2.1: no audit anchor in the update reply (kortiene/mx-agent#367).
+        expect(updateEnv.audit_ref.invocation_id, 'update: v0.2.1 reply has no invocation_id').toBeNull();
         expect(JSON.stringify(updateRaw)).not.toMatch(SECRET_PATTERN);
 
         const updNode = updateEnv.result as Record<string, unknown>;

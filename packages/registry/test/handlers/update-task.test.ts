@@ -150,13 +150,14 @@ describe('mxUpdateTask — happy path', () => {
     expect(Object.prototype.hasOwnProperty.call(params[0], 'state')).toBe(false);
   });
 
-  it('forwards assign to the daemon', async () => {
+  it('forwards assign to the daemon as assigned_to', async () => {
     const params: Record<string, unknown>[] = [];
     await mxUpdateTask(
       { task_id: 'task_xyz', assign: 'agent_new' },
       makeDeps({ daemon: makeDaemon(UPDATED_TASK, (_, p) => params.push(p as Record<string, unknown>)) }),
     );
-    expect(params[0]?.['assign']).toBe('agent_new');
+    // The daemon's UpdateTaskOptions field is `assigned_to` (not `assign`).
+    expect(params[0]?.['assigned_to']).toBe('agent_new');
   });
 
   it('forwards depends_on and blocks when provided', async () => {

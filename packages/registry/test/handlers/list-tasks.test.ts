@@ -116,20 +116,25 @@ describe('mxListTasks — view: graph (default)', () => {
     expect(depEdge?.kind).toBe('depends_on');
   });
 
-  it('view defaults to "graph" when omitted', async () => {
+  it('view defaults to "graph" — edges DERIVED from task.list, task.graph NOT called', async () => {
     const calls: string[] = [];
     const daemon = makeDaemon({ onCall: (m) => calls.push(m) });
-    await mxListTasks({}, makeDeps({ daemon }));
-    // Default view=graph means task.graph is called (in addition to task.list).
+    const result = await mxListTasks({}, makeDeps({ daemon }));
+    expect(result.status).toBe('ok');
+    // Default view=graph returns edges, but they are derived from each node's
+    // depends_on/blocks (task.list carries them). task.graph is deliberately NOT
+    // called: it hangs on v0.2.1 and poisons the multiplexed connection
+    // (kortiene/mx-agent#368). task.list alone reflects the DAG.
     expect(calls).toContain('task.list');
-    expect(calls).toContain('task.graph');
+    expect(calls).not.toContain('task.graph');
+    expect(Array.isArray((result.result as Record<string, unknown>).edges)).toBe(true);
   });
 
-  it('view: "graph" explicitly also calls task.graph', async () => {
+  it('view: "graph" explicitly still derives edges without calling task.graph', async () => {
     const calls: string[] = [];
     const daemon = makeDaemon({ onCall: (m) => calls.push(m) });
     await mxListTasks({ view: 'graph' }, makeDeps({ daemon }));
-    expect(calls).toContain('task.graph');
+    expect(calls).not.toContain('task.graph');
   });
 });
 
@@ -174,19 +179,22 @@ describe('mxListTasks — DAG acceptance criterion (daemon-free, scripted)', () 
     expect(depEdge?.kind).toBe('depends_on');
   });
 
-  it('merges explicit graph edges with derived ones (no duplicates)', async () => {
+  it('derives all edges from the task.list node records (task.graph is never consulted)', async () => {
+    const calls: string[] = [];
     const daemon = makeDaemon({
       listResponse: { tasks: [TASK_A] },
-      // Daemon explicitly returns the same edge we'd derive + a new one.
-      graphResponse: [
-        { from: 'task_a', to: 'task_b', kind: 'depends_on' }, // already derived
-        { from: 'task_a', to: 'task_c', kind: 'depends_on' }, // new
-      ],
+      // Even if a daemon WOULD return extra explicit edges, the handler never calls
+      // task.graph (kortiene/mx-agent#368), so only edges derivable from TASK_A's
+      // depends_on/blocks appear — the speculative task_c edge is NOT merged.
+      graphResponse: [{ from: 'task_a', to: 'task_c', kind: 'depends_on' }],
+      onCall: (m) => calls.push(m),
     });
     const result = await mxListTasks({}, makeDeps({ daemon }));
     const payload = result.result as { edges: Array<Record<string, unknown>> };
-    // Derived edge + new explicit edge = 2 (no duplicate)
-    expect(payload.edges).toHaveLength(2);
+    expect(calls).not.toContain('task.graph');
+    const ids = payload.edges.map((e) => `${e.from as string}->${e.to as string}`);
+    expect(ids).toContain('task_a->task_b'); // derived from TASK_A.depends_on
+    expect(ids).not.toContain('task_a->task_c'); // task.graph not merged
   });
 });
 
@@ -206,7 +214,8 @@ describe('mxListTasks — filter forwarding', () => {
     const params: Record<string, unknown>[] = [];
     const daemon = makeDaemon({ onCall: (m, p) => { if (m === 'task.list') params.push(p as Record<string, unknown>); } });
     await mxListTasks({ assignee: 'agent_x' }, makeDeps({ daemon }));
-    expect(params[0]?.['assignee']).toBe('agent_x');
+    // The daemon's ListTasksOptions filter field is `assigned_to` (not `assignee`).
+    expect(params[0]?.['assigned_to']).toBe('agent_x');
   });
 
   it('omits state/assignee when not provided (no undefined keys)', async () => {
@@ -215,7 +224,7 @@ describe('mxListTasks — filter forwarding', () => {
     await mxListTasks({}, makeDeps({ daemon }));
     if (params[0] !== null && params[0] !== undefined) {
       expect(Object.prototype.hasOwnProperty.call(params[0], 'state')).toBe(false);
-      expect(Object.prototype.hasOwnProperty.call(params[0], 'assignee')).toBe(false);
+      expect(Object.prototype.hasOwnProperty.call(params[0], 'assigned_to')).toBe(false);
     }
   });
 });
@@ -318,25 +327,6 @@ describe('mxListTasks — task.list reply shapes', () => {
 });
 
 // ---------------------------------------------------------------------------
-// task.graph with `links` key alias (readEdgeRows checks links if edges absent)
-// ---------------------------------------------------------------------------
-
-describe('mxListTasks — task.graph with `links` key', () => {
-  it('graph reply with `links` (not `edges`) key is correctly merged', async () => {
-    const daemon = makeDaemon({
-      listResponse: { tasks: [TASK_A] },
-      // Daemon returns edges under `links` rather than `edges`.
-      graphResponse: { links: [{ from: 'task_a', to: 'task_x', kind: 'blocks' }] },
-    });
-    const result = await mxListTasks({}, makeDeps({ daemon }));
-    expect(result.status).toBe('ok');
-    const payload = result.result as { edges: Array<{ from: string; to: string; kind: string }> };
-    const blocksEdge = payload.edges.find((e) => e.from === 'task_a' && e.to === 'task_x');
-    expect(blocksEdge?.kind).toBe('blocks');
-  });
-});
-
-// ---------------------------------------------------------------------------
 // Combined filters (state AND assignee together)
 // ---------------------------------------------------------------------------
 
@@ -348,7 +338,8 @@ describe('mxListTasks — combined filters', () => {
     });
     await mxListTasks({ state: 'executing', assignee: 'agent_runner' }, makeDeps({ daemon }));
     expect(params[0]?.['state']).toBe('executing');
-    expect(params[0]?.['assignee']).toBe('agent_runner');
+    // The daemon's ListTasksOptions filter field is `assigned_to` (not `assignee`).
+    expect(params[0]?.['assigned_to']).toBe('agent_runner');
   });
 
   it('room + state + assignee all forwarded together', async () => {
@@ -359,30 +350,29 @@ describe('mxListTasks — combined filters', () => {
     await mxListTasks({ state: 'assigned', assignee: 'agent_x' }, makeDeps({ room: '!ws:hs', daemon }));
     expect(params[0]?.['room']).toBe('!ws:hs');
     expect(params[0]?.['state']).toBe('assigned');
-    expect(params[0]?.['assignee']).toBe('agent_x');
+    expect(params[0]?.['assigned_to']).toBe('agent_x');
   });
 });
 
 // ---------------------------------------------------------------------------
-// task.graph fault tolerance
+// Graph view derives edges from task.list alone (task.graph not called)
 // ---------------------------------------------------------------------------
 
-describe('mxListTasks — task.graph fault tolerance', () => {
-  it('task.graph fault is tolerated — result is ok with derived edges only', async () => {
-    const daemon = makeDaemon({ throwOnGraph: true });
+describe('mxListTasks — graph view derives edges from task.list', () => {
+  it('returns ok with edges derived from node depends_on/blocks (task.graph not called)', async () => {
+    const calls: string[] = [];
+    const daemon = makeDaemon({ onCall: (m) => calls.push(m) });
     const result = await mxListTasks({}, makeDeps({ daemon }));
-    // Despite the graph fault, the list should succeed.
     expect(result.status).toBe('ok');
+    expect(calls).not.toContain('task.graph');
     const payload = result.result as { tasks: unknown[]; edges: Array<Record<string, unknown>> };
-    // Edges are still derived from node depends_on/blocks.
     expect(Array.isArray(payload.edges)).toBe(true);
     const depEdge = payload.edges.find((e) => e.from === 'task_a');
     expect(depEdge).toBeDefined();
   });
 
-  it('graph fault does not affect tasks', async () => {
-    const daemon = makeDaemon({ throwOnGraph: true });
-    const result = await mxListTasks({}, makeDeps({ daemon }));
+  it('returns all task nodes', async () => {
+    const result = await mxListTasks({}, makeDeps());
     const payload = result.result as { tasks: unknown[] };
     expect(payload.tasks).toHaveLength(2);
   });

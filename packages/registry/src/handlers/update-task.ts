@@ -68,7 +68,10 @@ export async function mxUpdateTask(input: UpdateTaskInput, deps: RoomScopedDeps)
     room: deps.room,
     [TASK_ID_PARAM]: input.task_id,
     ...(input.state !== undefined ? { state: input.state } : {}),
-    ...(input.assign !== undefined ? { assign: input.assign } : {}),
+    // Daemon `UpdateTaskOptions` field is `assigned_to` (not `assign`); pinned by the
+    // live round-trip. NB: `UpdateTaskOptions` carries no `depends_on`/`blocks`, so the
+    // daemon ignores those two on update (edge mutation is not a v0.2.1 update verb).
+    ...(input.assign !== undefined ? { assigned_to: input.assign } : {}),
     ...(input.depends_on !== undefined ? { depends_on: input.depends_on } : {}),
     ...(input.blocks !== undefined ? { blocks: input.blocks } : {}),
     idempotency_key,
