@@ -307,8 +307,8 @@ describe('portability matrix — portabilityPrereqError (fail-not-skip)', () => 
 // ---------------------------------------------------------------------------
 
 describe('portability matrix — descriptor identity', () => {
-  it('the canonical name-set is the twelve model-facing mx_* verbs', () => {
-    expect(CANONICAL_TOOL_NAMES.length).toBe(12);
+  it('the canonical name-set is the thirteen model-facing mx_* verbs', () => {
+    expect(CANONICAL_TOOL_NAMES.length).toBe(13);
     expect([...CANONICAL_TOOL_NAMES].sort()).toEqual([...MODEL_FACING_ALLOWLIST].sort());
     expect([...CANONICAL_TOOL_NAMES].sort()).toEqual(CANONICAL_TOOLS.map((d) => d.name).sort());
   });

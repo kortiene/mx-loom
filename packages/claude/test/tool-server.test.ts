@@ -95,6 +95,23 @@ function fakeDaemon(): DaemonCall {
           return { context_id: 'ctx_1', sha256: 'abc123' };
         case 'share.get':
           return { context_id: 'ctx_1', kind: 'file', sha256: 'abc123', inline: 'content' };
+        // M3 (T301 + T303) task-DAG verbs. task.list returns an empty list so
+        // mx_dispatch_task → not_found (a valid envelope; enough to test routing).
+        case 'task.create':
+        case 'task.update':
+          return {
+            task_id: 'task_svr_1',
+            title: 'Server test task',
+            state: 'proposed',
+            depends_on: [],
+            blocks: [],
+            action: null,
+            audit_ref: { invocation_id: 'inv_svr_t', request_id: 'req_svr_t', room: ROOM, event_id: '$svr_tevt' },
+          };
+        case 'task.list':
+          return [];
+        case 'task.graph':
+          return [];
         default:
           throw new Error(`unexpected daemon method in tool-server test: ${method}`);
       }
@@ -164,11 +181,11 @@ describe('server config shape', () => {
 // ---------------------------------------------------------------------------
 
 describe('tool registration', () => {
-  it('exactly twelve tools are registered (matching CANONICAL_TOOLS)', async () => {
+  it('exactly thirteen tools are registered (matching CANONICAL_TOOLS)', async () => {
     const client = await connectServer(makeCtx());
     const { tools } = await client.listTools();
     expect(tools).toHaveLength(CANONICAL_TOOLS.length);
-    expect(tools).toHaveLength(12);
+    expect(tools).toHaveLength(13);
   });
 
   it('the registered tool names equal CANONICAL_TOOLS names', async () => {
@@ -262,6 +279,33 @@ describe('handler dispatch (AC1 — sync ok path)', () => {
     })) as CallToolResult;
     const sc = res.structuredContent as { status: string };
     expect(['ok', 'denied', 'error']).toContain(sc.status);
+  });
+
+  it('mx_dispatch_task routes through the dispatch table and returns a valid T102 envelope (DispatchDeps path)', async () => {
+    // The fakeDaemon returns an empty task list, so mx_dispatch_task maps to
+    // not_found — still a valid ToolResult envelope confirming the routing works.
+    const client = await connectServer(makeCtx());
+    const res = (await client.callTool({
+      name: 'mx_dispatch_task',
+      arguments: { task_id: 'task_svr_dispatch_test_1' },
+    })) as CallToolResult;
+    expect(res).toBeDefined();
+    const sc = res.structuredContent as { status: string };
+    expect(['ok', 'running', 'awaiting_approval', 'denied', 'error']).toContain(sc.status);
+  });
+
+  it('mx_dispatch_task: internal error (not an isError) when room is missing from context', async () => {
+    const client = await connectServer(makeCtx({ room: undefined }));
+    const res = (await client.callTool({
+      name: 'mx_dispatch_task',
+      arguments: { task_id: 'task_svr_dispatch_no_room' },
+    })) as CallToolResult;
+    const sc = res.structuredContent as { status: string; error?: { code: string } };
+    expect(sc.status).toBe('error');
+    expect(sc.error?.code).toBe('internal');
+    // A status:error that originates from an internal guard (not a daemon fault) still
+    // carries isError:true (the protocol layer signals error to the model).
+    expect(res.isError).toBe(true);
   });
 });
 

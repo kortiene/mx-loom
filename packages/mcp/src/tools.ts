@@ -45,7 +45,7 @@ export const ASYNC_SEMANTICS_META_KEY = 'io.mxloom/async_semantics';
 
 /**
  * Generate the MCP tool list from the canonical registry. Defaults to
- * {@link CANONICAL_TOOLS} (the full 12-verb set: the 9 M1 verbs + the 3 M3 task
+ * {@link CANONICAL_TOOLS} (the full 13-verb set: the 9 M1 verbs + the 4 M3 task
  * verbs); takes an explicit descriptor set only for tests.
  *
  * The returned `inputSchema` is the descriptor's own JSON Schema object (frozen) —

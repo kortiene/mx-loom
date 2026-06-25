@@ -231,16 +231,17 @@ describe('T301 e2e §1 — descriptor surface via MCP binding (no daemon)', () =
     await close();
   });
 
-  it('CANONICAL_TOOLS includes all three task verbs (grew 9 → 12)', () => {
+  it('CANONICAL_TOOLS includes all four task verbs (grew 9 → 13)', () => {
     const names = CANONICAL_TOOLS.map((d) => d.name);
     expect(names).toContain('mx_create_task');
     expect(names).toContain('mx_update_task');
     expect(names).toContain('mx_list_tasks');
-    // The canonical set is now 12: the 9 M1 verbs + the 3 M3 task verbs.
-    expect(names).toHaveLength(12);
+    expect(names).toContain('mx_dispatch_task');
+    // The canonical set is now 13: the 9 M1 verbs + the 4 M3 task verbs (T301 + T303).
+    expect(names).toHaveLength(13);
   });
 
-  it('tools/list surfaces exactly 12 mx_* verbs — no authority verb is reachable', async () => {
+  it('tools/list surfaces exactly 13 mx_* verbs — no authority verb is reachable', async () => {
     const { tools } = await client.listTools();
     expect(tools.map((t) => t.name).sort()).toEqual(
       CANONICAL_TOOLS.map((d) => d.name).sort(),

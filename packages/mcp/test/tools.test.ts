@@ -14,8 +14,8 @@ import { ASYNC_SEMANTICS_META_KEY, buildToolList } from '../src/tools.js';
 describe('buildToolList', () => {
   const tools = buildToolList();
 
-  it('lists exactly the twelve canonical verbs, in order', () => {
-    expect(tools).toHaveLength(12);
+  it('lists exactly the thirteen canonical verbs, in order', () => {
+    expect(tools).toHaveLength(13);
     expect(tools.map((t) => t.name)).toEqual(CANONICAL_TOOLS.map((d) => d.name));
   });
 

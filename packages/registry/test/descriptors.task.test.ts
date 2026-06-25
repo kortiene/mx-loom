@@ -21,7 +21,7 @@
  *  - Input schemas are closed (`additionalProperties: false`); output schemas are open
  *    (`additionalProperties: true`).
  *  - No input schema declares a credential-shaped property name.
- *  - `CANONICAL_TOOLS` (the full 12-verb set) contains the 3 task verbs in stable position.
+ *  - `CANONICAL_TOOLS` (the full 13-verb set) contains the 4 task verbs in stable position.
  */
 import { describe, expect, it } from 'vitest';
 
@@ -31,6 +31,7 @@ import {
   CANONICAL_M3_TASK_TOOLS,
   CANONICAL_TOOLS,
   MX_CREATE_TASK,
+  MX_DISPATCH_TASK,
   MX_LIST_TASKS,
   MX_UPDATE_TASK,
   TOOL_NAME_RE,
@@ -57,18 +58,20 @@ describe('individual task descriptor consts', () => {
     }
   });
 
-  it('CANONICAL_M3_TASK_TOOLS contains exactly the 3 task descriptors in order', () => {
-    expect(CANONICAL_M3_TASK_TOOLS).toHaveLength(3);
+  it('CANONICAL_M3_TASK_TOOLS contains exactly the 4 task descriptors in order', () => {
+    expect(CANONICAL_M3_TASK_TOOLS).toHaveLength(4);
     expect(CANONICAL_M3_TASK_TOOLS[0]).toBe(MX_CREATE_TASK);
     expect(CANONICAL_M3_TASK_TOOLS[1]).toBe(MX_UPDATE_TASK);
     expect(CANONICAL_M3_TASK_TOOLS[2]).toBe(MX_LIST_TASKS);
+    expect(CANONICAL_M3_TASK_TOOLS[3]).toBe(MX_DISPATCH_TASK);
   });
 
-  it('CANONICAL_TOOLS ends with the 3 task verbs at positions 9–11', () => {
-    expect(CANONICAL_TOOLS).toHaveLength(12);
+  it('CANONICAL_TOOLS ends with the 4 task verbs at positions 9–12', () => {
+    expect(CANONICAL_TOOLS).toHaveLength(13);
     expect(CANONICAL_TOOLS[9]).toBe(MX_CREATE_TASK);
     expect(CANONICAL_TOOLS[10]).toBe(MX_UPDATE_TASK);
     expect(CANONICAL_TOOLS[11]).toBe(MX_LIST_TASKS);
+    expect(CANONICAL_TOOLS[12]).toBe(MX_DISPATCH_TASK);
   });
 
   it('every task descriptor name matches TOOL_NAME_RE', () => {
@@ -359,6 +362,76 @@ describe('mx_list_tasks descriptor', () => {
 
   it('no input property is credential-shaped', () => {
     expect(findCredentialShapedProperty(MX_LIST_TASKS.input_schema, TOOLBELT_CREDENTIAL_KEY_RE)).toBeUndefined();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// mx_dispatch_task — descriptor-specific tests
+// ---------------------------------------------------------------------------
+
+describe('mx_dispatch_task descriptor', () => {
+  type InputSchema = {
+    type: string;
+    properties: Record<string, { type?: string; minimum?: number; description?: string }>;
+    required?: string[];
+    additionalProperties: boolean;
+  };
+
+  const input = MX_DISPATCH_TASK.input_schema as InputSchema;
+  const output = MX_DISPATCH_TASK.output_schema as {
+    type?: string;
+    additionalProperties: unknown;
+  };
+
+  it('name is mx_dispatch_task', () => {
+    expect(MX_DISPATCH_TASK.name).toBe('mx_dispatch_task');
+  });
+
+  it('is async_semantics: deferred (dispatched actions are approval-gatable, unlike the sync authoring verbs)', () => {
+    expect(MX_DISPATCH_TASK.async_semantics).toBe('deferred');
+  });
+
+  it('is defined and frozen', () => {
+    expect(MX_DISPATCH_TASK).toBeDefined();
+    expect(Object.isFrozen(MX_DISPATCH_TASK)).toBe(true);
+  });
+
+  it('has a non-empty description', () => {
+    expect(MX_DISPATCH_TASK.description.trim().length).toBeGreaterThan(0);
+  });
+
+  it('requires only task_id', () => {
+    const required = input.required ?? [];
+    expect(required).toContain('task_id');
+    expect(required).not.toContain('wait_ms');
+    expect(required).not.toContain('idempotency_key');
+  });
+
+  it('task_id is a required string', () => {
+    expect(input.properties.task_id?.type).toBe('string');
+  });
+
+  it('wait_ms is an optional integer with minimum 0', () => {
+    expect(input.properties.wait_ms?.type).toBe('integer');
+    expect(input.properties.wait_ms?.minimum).toBe(0);
+    expect(input.required ?? []).not.toContain('wait_ms');
+  });
+
+  it('idempotency_key is an optional string (dedup nonce, task-stable when omitted)', () => {
+    expect(input.properties.idempotency_key?.type).toBe('string');
+    expect(input.required ?? []).not.toContain('idempotency_key');
+  });
+
+  it('is a closed input schema (additionalProperties: false)', () => {
+    expect(input.additionalProperties).toBe(false);
+  });
+
+  it('output_schema is open (additionalProperties: true — inner tool result shape is dynamic)', () => {
+    expect(output.additionalProperties).toBe(true);
+  });
+
+  it('no input property is credential-shaped', () => {
+    expect(findCredentialShapedProperty(MX_DISPATCH_TASK.input_schema, TOOLBELT_CREDENTIAL_KEY_RE)).toBeUndefined();
   });
 });
 

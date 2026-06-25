@@ -97,3 +97,14 @@ export interface DelegateDeps extends RoomScopedDeps {
  * seam is exactly the room-scoped seam, nothing more.
  */
 export type ExecDeps = RoomScopedDeps;
+
+/**
+ * The deps for `mx_dispatch_task` (T303 / #32). Dispatch re-routes a task node's
+ * authored action through `mxDelegateTool` (a `kind: 'tool'` action) or `mxRunCommand`
+ * (a `kind: 'exec'` action) and resolves the node via a `task.list` read, so it needs
+ * exactly the delegation seam: the injected daemon-call, the session
+ * {@link RoomScopedDeps.room}, and the optional {@link DelegateDeps.validator} the tool
+ * path's `mxDelegateTool` consumes (defaulted inside that handler). A type alias (not a
+ * fresh interface) because the dispatch seam *is* the delegation seam.
+ */
+export type DispatchDeps = DelegateDeps;

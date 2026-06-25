@@ -6,8 +6,8 @@
 // `type`-only), so the registry keeps its zero runtime toolbelt dependency.
 
 // The injected daemon-call seam + clock seams (+ the room-scoped seam shared by
-// the T105 delegation deps and the T106 guarded-exec deps).
-export type { DaemonCall, HandlerDeps, RoomScopedDeps, DelegateDeps, ExecDeps } from './deps.js';
+// the T105 delegation deps and the T106 guarded-exec deps; the T303 dispatch deps).
+export type { DaemonCall, HandlerDeps, RoomScopedDeps, DelegateDeps, ExecDeps, DispatchDeps } from './deps.js';
 
 // The pure invocation-state → envelope normalizers (useful to bindings + tests):
 // `invocationToResult` for an `invocation.get` read (T103), `callResponseToResult`
@@ -76,6 +76,17 @@ export { mxUpdateTask } from './update-task.js';
 export type { UpdateTaskInput } from './update-task.js';
 export { mxListTasks } from './list-tasks.js';
 export type { ListTasksInput, ListTasksResult } from './list-tasks.js';
+
+// The task-action dispatch handler (T303): `mx_dispatch_task` resolves a node's
+// authored action (task.list + id filter) and re-routes it through `mxDelegateTool`
+// (kind=tool) / `mxRunCommand` (kind=exec) so it traverses the identical receiver-side
+// authorize pipeline — authoring an action is never authorizing it. Plus the shared,
+// pure action→dispatch mapper (`actionToDispatch`) that single-sources the alignment
+// between what `mx_create_task` authors and what dispatch runs.
+export { mxDispatchTask } from './dispatch-task.js';
+export type { DispatchTaskInput } from './dispatch-task.js';
+export { actionToDispatch, dispatchToCreateActionParam, isInvalidDispatch } from './task-action.js';
+export type { ActionDispatch, InvalidActionDispatch } from './task-action.js';
 
 // The pure agent-record projectors (non-secret subset) + their model-facing types.
 export { projectAgentSummary, projectAgentDetail, projectTools } from './agent-projection.js';
