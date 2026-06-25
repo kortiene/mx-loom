@@ -207,10 +207,10 @@ describe('examples/README.md — no credential-shaped content', () => {
 // 4. Canonical tool names — guide table matches CANONICAL_M1_TOOLS exactly
 // ---------------------------------------------------------------------------
 
-describe('docs/runtime-integration.md — twelve canonical verbs table', () => {
-  // Extract the "twelve canonical verbs" section, then pull out every
+describe('docs/runtime-integration.md — thirteen canonical verbs table', () => {
+  // Extract the "thirteen canonical verbs" section, then pull out every
   // backtick-wrapped `mx_*` verb from the first pipe-table in that section.
-  const verbsSection = extractSection(guideText, '## The twelve canonical verbs');
+  const verbsSection = extractSection(guideText, '## The thirteen canonical verbs');
 
   // Match table rows like: | `mx_find_agents` | ... |
   // Only the first column's backtick-wrapped mx_* name.
@@ -218,7 +218,7 @@ describe('docs/runtime-integration.md — twelve canonical verbs table', () => {
     (m) => m[1]!,
   );
 
-  it('lists exactly twelve mx_* verbs (one per canonical tool)', () => {
+  it('lists exactly thirteen mx_* verbs (one per canonical tool)', () => {
     expect(toolNamesInGuide).toHaveLength(CANONICAL_TOOLS.length);
   });
 

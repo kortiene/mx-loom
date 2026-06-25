@@ -2,12 +2,14 @@
  * The canonical descriptor set (design §2, §8) — the static, frozen `mx_*` verbs the
  * fabric surfaces. T101 authored the **7 P0** M1 verbs; T108 added the **2 P1** M1
  * verbs (`mx_cancel` / `mx_workspace_status`), completing the **9-verb M1** surface;
- * T301 adds the **3 M3** task-DAG verbs (`mx_create_task` / `mx_update_task` /
- * `mx_list_tasks`), bringing the full enumerable set to **12**.
+ * T301 added the **3 M3** task-DAG verbs (`mx_create_task` / `mx_update_task` /
+ * `mx_list_tasks`); T303 adds the **4th M3** verb `mx_dispatch_task` (dispatch a
+ * node's authored action through the authorize pipeline), bringing the full
+ * enumerable set to **13**.
  *
  * Two named sets live here:
  *  - {@link CANONICAL_M1_TOOLS} — the 9 M1 verbs (a documented, back-compat subset).
- *  - {@link CANONICAL_TOOLS} — the full 12-verb superset (the 9 M1 verbs + the 3 M3
+ *  - {@link CANONICAL_TOOLS} — the full 13-verb superset (the 9 M1 verbs + the 4 M3
  *    task verbs). This is what `loadRegistry()` and every binding generator default
  *    to, so the task verbs surface through MCP / Claude / Pi from one source.
  *
@@ -28,6 +30,7 @@ import { MX_WORKSPACE_STATUS } from './workspace-status.js';
 import { MX_CREATE_TASK } from './create-task.js';
 import { MX_UPDATE_TASK } from './update-task.js';
 import { MX_LIST_TASKS } from './list-tasks.js';
+import { MX_DISPATCH_TASK } from './dispatch-task.js';
 
 export {
   MX_FIND_AGENTS,
@@ -42,6 +45,7 @@ export {
   MX_CREATE_TASK,
   MX_UPDATE_TASK,
   MX_LIST_TASKS,
+  MX_DISPATCH_TASK,
 };
 
 /**
@@ -63,18 +67,21 @@ export const CANONICAL_M1_TOOLS: readonly ToolDescriptor[] = deepFreeze([
 ]);
 
 /**
- * The **3 M3 task-DAG** verbs (T301), in stable order. Frozen. A documented subset
- * (the M3 first deliverable); the full enumerable set is {@link CANONICAL_TOOLS}.
+ * The **4 M3 task-DAG** verbs (T301 + T303), in stable order. Frozen. The 3 authoring
+ * /reading verbs (`mx_create_task` / `mx_update_task` / `mx_list_tasks`, T301) followed
+ * by the dispatch verb (`mx_dispatch_task`, T303). A documented subset; the full
+ * enumerable set is {@link CANONICAL_TOOLS}.
  */
 export const CANONICAL_M3_TASK_TOOLS: readonly ToolDescriptor[] = deepFreeze([
   MX_CREATE_TASK,
   MX_UPDATE_TASK,
   MX_LIST_TASKS,
+  MX_DISPATCH_TASK,
 ]);
 
 /**
  * The full canonical descriptor set, in stable order. Frozen. The 9 M1 verbs
- * followed by the 3 M3 task verbs (**12 total**). This is the default for
+ * followed by the 4 M3 task verbs (**13 total**). This is the default for
  * `loadRegistry()` and every binding generator (MCP / Claude / Pi), so a single
  * descriptor set drives the model-facing surface across every runtime.
  */

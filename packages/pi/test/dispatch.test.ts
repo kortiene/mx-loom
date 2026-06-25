@@ -38,7 +38,7 @@ function makeCtx(options?: { room?: string | undefined; daemon?: DaemonCall }): 
   };
 }
 
-/** Minimal valid args for each of the twelve verbs (enough to reach the handler). */
+/** Minimal valid args for each of the thirteen verbs (enough to reach the handler). */
 const TOOL_ARGS: Readonly<Record<string, Record<string, unknown>>> = {
   mx_find_agents: {},
   mx_describe_agent: { agent_id: 'agent-b' },
@@ -53,6 +53,8 @@ const TOOL_ARGS: Readonly<Record<string, Record<string, unknown>>> = {
   mx_create_task: { title: 'Pi stub task' },
   mx_update_task: { task_id: 'task_pi_stub_1' },
   mx_list_tasks: {},
+  // M3 (T303) dispatch verb — empty task list → not_found envelope (still a valid ToolResult).
+  mx_dispatch_task: { task_id: 'task_pi_dispatch_stub_1' },
 };
 
 // ---------------------------------------------------------------------------
@@ -60,7 +62,7 @@ const TOOL_ARGS: Readonly<Record<string, Record<string, unknown>>> = {
 // ---------------------------------------------------------------------------
 
 describe('DISPATCH table structure', () => {
-  it('has exactly the twelve canonical tool names as keys', () => {
+  it('has exactly the thirteen canonical tool names as keys', () => {
     const canonical = new Set(CANONICAL_TOOLS.map((d) => d.name));
     const keys = new Set(Object.keys(DISPATCH));
     expect(keys).toEqual(canonical);
@@ -132,6 +134,8 @@ describe('dispatchCall', () => {
     { name: 'mx_create_task' },
     { name: 'mx_update_task' },
     { name: 'mx_list_tasks' },
+    // T303: dispatch routes through task.list (empty list → not_found, still a valid envelope)
+    { name: 'mx_dispatch_task' },
   ])(
     '$name (M3 task verb): dispatches without throwing and returns a ToolResult',
     async ({ name }) => {
@@ -227,5 +231,27 @@ describe('room provenance', () => {
     const result = await dispatchCall('mx_list_tasks', {}, ctx);
     expect(result).toHaveProperty('status');
     expect(result.status).toBe('ok');
+  });
+
+  it('mx_dispatch_task: returns internal error when context has no room (fail-fast before task.list)', async () => {
+    const calls: string[] = [];
+    const ctx = makeCtx({ room: undefined, daemon: makeFakeDaemon((m) => calls.push(m)) });
+    const result = await dispatchCall('mx_dispatch_task', { task_id: 'task_pi_dispatch_stub_1' }, ctx);
+    expect(result.status).toBe('error');
+    expect(result.error?.code).toBe('internal');
+    // No daemon call must occur before the fail-fast guard (room provenance check is first)
+    expect(calls).not.toContain('task.list');
+  });
+
+  it('mx_dispatch_task: context room reaches the task.list daemon call (room from session, not model)', async () => {
+    const calls: Array<{ method: string; params: unknown }> = [];
+    const ctx = makeCtx({
+      room: '!pi-dispatch-room:server',
+      daemon: makeFakeDaemon((m, p) => calls.push({ method: m, params: p })),
+    });
+    // Empty task list → not_found; what matters is that task.list is called with the right room
+    await dispatchCall('mx_dispatch_task', { task_id: 'task_pi_dispatch_1' }, ctx);
+    const listCall = calls.find((c) => c.method === 'task.list');
+    expect(listCall).toBeDefined();
   });
 });

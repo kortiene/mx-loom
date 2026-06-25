@@ -180,7 +180,7 @@ function buildToolDefinition(
 }
 
 /**
- * Build the generated Pi {@link ToolDefinition}[] for the twelve canonical `mx_*`
+ * Build the generated Pi {@link ToolDefinition}[] for the thirteen canonical `mx_*`
  * verbs, bound to a secret-free {@link BindingContext}.
  *
  * @throws {PiSchemaConversionError} at build time if a descriptor's `input_schema`

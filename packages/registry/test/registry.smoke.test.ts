@@ -36,6 +36,8 @@ describe('loadRegistry (T101 smoke)', () => {
       'mx_create_task',
       'mx_update_task',
       'mx_list_tasks',
+      // M3 (T303) — the dispatch verb.
+      'mx_dispatch_task',
     ]);
     expect(registry.has('mx_delegate_tool')).toBe(true);
     expect(registry.get('mx_delegate_tool')?.async_semantics).toBe('deferred');
@@ -54,7 +56,7 @@ describe('loadRegistry (T101 smoke)', () => {
       inputSchema: d.input_schema,
       deferred: d.async_semantics === 'deferred',
     }));
-    expect(tools).toHaveLength(12);
+    expect(tools).toHaveLength(13);
     expect(tools.every((t) => t.name.startsWith('mx_') && t.description.length > 0)).toBe(true);
   });
 

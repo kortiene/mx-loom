@@ -17,12 +17,12 @@
 
 /**
  * The complete universe of known model-facing `mx_*` verbs (design §2, §8). The
- * default registry now loads all **12** verbs: the 7 P0 M1 verbs (T101) + the 2 P1
+ * default registry now loads all **13** verbs: the 7 P0 M1 verbs (T101) + the 2 P1
  * M1 verbs `mx_cancel` / `mx_workspace_status` (T108) + the 3 M3 task-DAG verbs
- * `mx_create_task` / `mx_update_task` / `mx_list_tasks` (T301). The security
- * regression test asserts the default set is a subset of this allowlist. Task verbs
- * are plan-authoring verbs, not governance verbs — the forbidden-authority check is
- * untouched.
+ * `mx_create_task` / `mx_update_task` / `mx_list_tasks` (T301) + the M3 dispatch verb
+ * `mx_dispatch_task` (T303). The security regression test asserts the default set is a
+ * subset of this allowlist. Task verbs (authoring, reading, and dispatching the plan)
+ * are not governance verbs — the forbidden-authority check is untouched.
  */
 export const MODEL_FACING_ALLOWLIST = [
   'mx_find_agents',
@@ -39,6 +39,9 @@ export const MODEL_FACING_ALLOWLIST = [
   'mx_create_task',
   'mx_update_task',
   'mx_list_tasks',
+  // M3 (T303) — dispatch a node's authored action through the authorize pipeline.
+  // A request-producer, not a governance verb — the forbidden-authority set is untouched.
+  'mx_dispatch_task',
 ] as const;
 
 /**

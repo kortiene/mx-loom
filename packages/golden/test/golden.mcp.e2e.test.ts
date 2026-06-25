@@ -72,7 +72,7 @@ describe.skipIf(SKIP_GOLDEN)('GOLDEN e2e · arm A — @mx-loom/mcp binding', () 
   // No-authority surface — the model tool set is exactly the nine mx_* verbs.
   // -------------------------------------------------------------------------
 
-  it('tools/list surfaces only the twelve mx_* verbs — no authority verb is reachable', async () => {
+  it('tools/list surfaces only the thirteen mx_* verbs — no authority verb is reachable', async () => {
     if (!live) throw new Error('arm not initialised');
     const { tools } = await live.mcpClient.listTools();
 

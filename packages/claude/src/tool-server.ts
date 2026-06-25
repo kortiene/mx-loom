@@ -3,7 +3,7 @@
  * `createSdkMcpServer`.
  *
  * {@link createMxToolServer} enumerates the canonical {@link CANONICAL_TOOLS} (the
- * full 12-verb set: the 9 M1 verbs + the 3 M3 task verbs)
+ * full 13-verb set: the 9 M1 verbs + the 4 M3 task verbs)
  * and produces one SDK `tool()` per descriptor, wrapped in a
  * `createSdkMcpServer({ name, version, tools })` config the host drops into
  * `options.mcpServers`. The toolbelt then runs **inside** the agent process — no
@@ -83,7 +83,7 @@ function idempotencyKeyOf(args: ToolArgs | undefined): string | undefined {
 }
 
 /**
- * Build the in-process `createSdkMcpServer` config for the twelve canonical `mx_*`
+ * Build the in-process `createSdkMcpServer` config for the thirteen canonical `mx_*`
  * verbs, bound to a secret-free {@link BindingContext}.
  *
  * @throws {JsonSchemaConversionError} at build time if a descriptor's

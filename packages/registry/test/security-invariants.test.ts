@@ -47,10 +47,16 @@ describe('default registry — exact verb set', () => {
     'mx_workspace_status',
   ] as const;
 
-  // The full canonical set: the 9 M1 verbs + the 3 M3 task-DAG verbs (T301).
-  const EXPECTED_ALL = [...EXPECTED_M1, 'mx_create_task', 'mx_update_task', 'mx_list_tasks'] as const;
+  // The full canonical set: the 9 M1 verbs + the 4 M3 task-DAG verbs (T301 + T303).
+  const EXPECTED_ALL = [
+    ...EXPECTED_M1,
+    'mx_create_task',
+    'mx_update_task',
+    'mx_list_tasks',
+    'mx_dispatch_task',
+  ] as const;
 
-  it('default registry contains exactly the 12 canonical verbs (9 M1 + 3 M3), no more', () => {
+  it('default registry contains exactly the 13 canonical verbs (9 M1 + 4 M3), no more', () => {
     const names = loadRegistry().list().map((d) => d.name);
     expect(names).toEqual([...EXPECTED_ALL]);
   });
@@ -485,8 +491,8 @@ describe('canonical descriptors — global security pass', () => {
     }
   });
 
-  it('the 3 M3 task verbs pass the same security invariants as M1 verbs', () => {
-    const taskVerbs = ['mx_create_task', 'mx_update_task', 'mx_list_tasks'];
+  it('the 4 M3 task verbs (T301 + T303) pass the same security invariants as M1 verbs', () => {
+    const taskVerbs = ['mx_create_task', 'mx_update_task', 'mx_list_tasks', 'mx_dispatch_task'];
     const loaded = loadRegistry();
     for (const name of taskVerbs) {
       const d = loaded.get(name);

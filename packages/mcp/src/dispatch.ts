@@ -3,7 +3,7 @@
  *
  * The registry exports {@link CANONICAL_TOOLS} for *listing* but no execution
  * router; T109 builds the one central map from a descriptor `name` to its
- * `(input, deps) => Promise<ToolResult>` handler. Because all twelve handlers share
+ * `(input, deps) => Promise<ToolResult>` handler. Because all thirteen handlers share
  * that shape and **never throw**, the router is uniform: look up by name, build
  * the handler's `deps` subtype from the {@link BindingContext}, call it, get a
  * {@link ToolResult}.
@@ -21,7 +21,7 @@
  * `errored('not_found', …)` envelope — never a thrown exception (the model asked
  * for a verb we do not surface).
  *
- * No authority surface is reachable: the table is keyed only by the twelve
+ * No authority surface is reachable: the table is keyed only by the thirteen
  * `CANONICAL_TOOLS` names, so `trust.*` / `approval.decide` / `policy.*` /
  * `auth.*` / `device.*` / `daemon.*` are structurally absent.
  */
@@ -31,6 +31,7 @@ import {
   MX_CREATE_TASK,
   MX_DELEGATE_TOOL,
   MX_DESCRIBE_AGENT,
+  MX_DISPATCH_TASK,
   MX_FIND_AGENTS,
   MX_GET_CONTEXT,
   MX_LIST_TASKS,
@@ -44,6 +45,7 @@ import {
   mxCreateTask,
   mxDelegateTool,
   mxDescribeAgent,
+  mxDispatchTask,
   mxFindAgents,
   mxGetContext,
   mxListTasks,
@@ -60,6 +62,7 @@ import type {
   DelegateDeps,
   DelegateToolInput,
   DescribeAgentInput,
+  DispatchTaskInput,
   FindAgentsInput,
   GetContextInput,
   HandlerDeps,
@@ -107,7 +110,7 @@ const delegateDeps = (ctx: BindingContext): DelegateDeps => ({
 });
 
 /**
- * The single name → handler map, built once over the twelve canonical verbs. Keyed
+ * The single name → handler map, built once over the thirteen canonical verbs. Keyed
  * by the descriptor `name` (the single source) so the surfaced set can never drift
  * from {@link CANONICAL_TOOLS}.
  */
@@ -130,6 +133,10 @@ export const DISPATCH: Readonly<Record<string, DispatchEntry>> = Object.freeze({
   [MX_CREATE_TASK.name]: (args, ctx) => mxCreateTask(args as unknown as CreateTaskInput, roomScopedDeps(ctx)),
   [MX_UPDATE_TASK.name]: (args, ctx) => mxUpdateTask(args as unknown as UpdateTaskInput, roomScopedDeps(ctx)),
   [MX_LIST_TASKS.name]: (args, ctx) => mxListTasks(args as unknown as ListTasksInput, roomScopedDeps(ctx)),
+  // M3 (T303) — dispatch a node's authored action. It re-routes through the
+  // delegation path (`mxDelegateTool` for kind=tool), so it needs `DispatchDeps`
+  // (= `DelegateDeps`): room + the defaulted validator the tool path supplies itself.
+  [MX_DISPATCH_TASK.name]: (args, ctx) => mxDispatchTask(args as unknown as DispatchTaskInput, delegateDeps(ctx)),
 });
 
 /**

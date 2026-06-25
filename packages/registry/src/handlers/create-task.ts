@@ -39,6 +39,7 @@ import { errored, type ToolResult } from '../envelope.js';
 import { newIdempotencyKey } from '../idempotency.js';
 import type { RoomScopedDeps } from './deps.js';
 import { EMPTY_AUDIT_REF, faultToResult } from './handler-fault.js';
+import { actionToDispatch, dispatchToCreateActionParam, isInvalidDispatch } from './task-action.js';
 import { taskNodeResponseToResult, type TaskAction, type TaskState } from './task-projection.js';
 
 /**
@@ -68,25 +69,28 @@ export interface CreateTaskInput {
 
 /**
  * Map an authored {@link TaskAction} onto the daemon's `task.create` action param.
- * `kind: 'tool'` → `{ kind, tool, args }` (the daemon's `--tool` + `--arg/--input-json`);
- * `kind: 'exec'` → `{ kind, command, args, cwd }` (the daemon's `--exec`). The input
- * field `command_args` is forwarded as the exec `args` argv (pinned at the round-trip).
- * Omits absent fields so no `undefined` leaks into the params object.
+ * A **thin adapter over the shared {@link actionToDispatch} mapper** (T303), so what
+ * is authored into the DAG here is provably the same shape `mx_dispatch_task` will
+ * later dispatch (the "alignment" — a drift test pins them equal; there is no second,
+ * divergent copy of the mapping). A dispatchable action is authored via
+ * {@link dispatchToCreateActionParam}; a not-yet-dispatchable action (no `tool` /
+ * `command` yet) authors only its declared fields and lets the receiving daemon — the
+ * authority on action legality — validate it (T303 re-checks at dispatch). Omits
+ * absent fields so no `undefined` leaks into the params object.
  */
 function buildActionParam(action: TaskAction): Record<string, unknown> {
-  if (action.kind === 'exec') {
+  const dispatch = actionToDispatch(action);
+  if (isInvalidDispatch(dispatch)) {
     return {
-      kind: 'exec',
+      kind: action.kind,
+      ...(action.tool !== undefined ? { tool: action.tool } : {}),
+      ...(action.args !== undefined ? { args: action.args } : {}),
       ...(action.command !== undefined ? { command: action.command } : {}),
       ...(action.command_args !== undefined ? { args: action.command_args } : {}),
       ...(action.cwd !== undefined ? { cwd: action.cwd } : {}),
     };
   }
-  return {
-    kind: 'tool',
-    ...(action.tool !== undefined ? { tool: action.tool } : {}),
-    ...(action.args !== undefined ? { args: action.args } : {}),
-  };
+  return dispatchToCreateActionParam(dispatch);
 }
 
 /**

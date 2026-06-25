@@ -28,16 +28,19 @@ import {
   CANONICAL_M3_TASK_TOOLS,
   MODEL_FACING_ALLOWLIST,
   MX_CREATE_TASK,
+  MX_DISPATCH_TASK,
   MX_LIST_TASKS,
   MX_UPDATE_TASK,
   collectSchemaPropertyNames,
   findCredentialShapedProperty,
   isForbiddenAuthorityVerb,
   mxCreateTask,
+  mxDispatchTask,
   mxListTasks,
   mxUpdateTask,
   validateEnvelope,
   type DaemonCall,
+  type DispatchDeps,
   type RoomScopedDeps,
 } from '../../src/index.js';
 
@@ -106,6 +109,10 @@ describe('task verbs — MODEL_FACING_ALLOWLIST membership', () => {
   it('mx_list_tasks is in MODEL_FACING_ALLOWLIST', () => {
     expect(allowlist).toContain('mx_list_tasks');
   });
+
+  it('mx_dispatch_task is in MODEL_FACING_ALLOWLIST', () => {
+    expect(allowlist).toContain('mx_dispatch_task');
+  });
 });
 
 describe('task verbs — not forbidden authority verbs', () => {
@@ -119,6 +126,10 @@ describe('task verbs — not forbidden authority verbs', () => {
 
   it('mx_list_tasks is NOT a forbidden authority verb', () => {
     expect(isForbiddenAuthorityVerb(MX_LIST_TASKS.name)).toBe(false);
+  });
+
+  it('mx_dispatch_task is NOT a forbidden authority verb', () => {
+    expect(isForbiddenAuthorityVerb(MX_DISPATCH_TASK.name)).toBe(false);
   });
 });
 
@@ -358,6 +369,177 @@ describe('task handlers — all result envelopes pass ENVELOPE_SCHEMA', () => {
 
   it('mxListTasks ok (list)', async () => {
     const result = await mxListTasks({ view: 'list' }, makeDeps());
+    expect(validateEnvelope(result)).toBe(true);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// mx_dispatch_task — allowlist / authority / descriptor invariants
+// ---------------------------------------------------------------------------
+
+describe('mx_dispatch_task — descriptor security invariants', () => {
+  it('MX_DISPATCH_TASK.input_schema declares no credential-shaped property (toolbelt oracle)', () => {
+    const offender = findCredentialShapedProperty(MX_DISPATCH_TASK.input_schema, TOOLBELT_CREDENTIAL_KEY_RE);
+    expect(offender).toBeUndefined();
+  });
+
+  it('MX_DISPATCH_TASK.output_schema declares no credential-shaped property', () => {
+    const offender = findCredentialShapedProperty(MX_DISPATCH_TASK.output_schema, TOOLBELT_CREDENTIAL_KEY_RE);
+    expect(offender).toBeUndefined();
+  });
+
+  it('all property names in MX_DISPATCH_TASK schemas do not match TOOLBELT_CREDENTIAL_KEY_RE', () => {
+    for (const field of ['input_schema', 'output_schema'] as const) {
+      const names = collectSchemaPropertyNames(MX_DISPATCH_TASK[field]);
+      for (const name of names) {
+        expect(TOOLBELT_CREDENTIAL_KEY_RE.test(name), `dispatch_task.${field}.${name}`).toBe(false);
+      }
+    }
+  });
+});
+
+// ---------------------------------------------------------------------------
+// mxDispatchTask — room provenance and no-authority-mutation checks
+// ---------------------------------------------------------------------------
+
+// A minimal multi-method daemon for mxDispatchTask security tests.
+const SEC_DISPATCH_TASK_ID = 'task_sec_dispatch_01';
+const SEC_AGENT_ID = 'ag_sec_dispatch_01';
+
+const secDispatchTaskRaw = {
+  task_id: SEC_DISPATCH_TASK_ID,
+  title: 'Dispatch security test',
+  state: 'assigned',
+  assignee: SEC_AGENT_ID,
+  depends_on: [],
+  blocks: [],
+  action: { kind: 'tool', tool: 'run_tests', args: {} },
+};
+
+const secDispatchToolsResponse = {
+  agent_id: SEC_AGENT_ID,
+  kind: 'worker',
+  status: 'online',
+  capabilities: [],
+  tools: ['run_tests'],
+  schemas: [{
+    name: 'run_tests',
+    version: '1.0.0',
+    description: 'Test runner',
+    input_schema: { type: 'object', additionalProperties: true },
+    output_schema: { type: 'object', additionalProperties: true },
+  }],
+};
+
+function makeDispatchSecDaemon(
+  onMethod?: (method: string) => void,
+  callError?: Error,
+): DaemonCall {
+  return {
+    async call(method: string): Promise<unknown> {
+      onMethod?.(method);
+      if (method === 'task.list') return [secDispatchTaskRaw];
+      if (method === 'task.graph') return [];
+      if (method === 'agent.tools') return secDispatchToolsResponse;
+      if (method === 'call.start') {
+        if (callError) throw callError;
+        return {
+          ok: true,
+          result: { passed: 5 },
+          invocation_id: 'inv_sec_d_01',
+          request_id: 'req_sec_d_01',
+          room: ROOM,
+          event_id: '$sec_d_evt_01',
+        };
+      }
+      if (method === 'exec.start') return { ok: true, result: { exit_code: 0 }, invocation_id: 'inv_sec_exec_01', request_id: 'req_sec_exec_01', room: ROOM, event_id: '$sec_exec_01' };
+      throw new Error(`unexpected method in security test: ${method}`);
+    },
+  };
+}
+
+function makeDispatchSecDeps(opts: {
+  room?: string | undefined;
+  onMethod?: (method: string) => void;
+  callError?: Error;
+} = {}): DispatchDeps {
+  const roomValue = Object.prototype.hasOwnProperty.call(opts, 'room') ? opts.room : ROOM;
+  return {
+    room: roomValue,
+    daemon: makeDispatchSecDaemon(opts.onMethod, opts.callError),
+  };
+}
+
+describe('mxDispatchTask — room provenance (security)', () => {
+  it('fails fast with internal error when room is absent (no daemon call)', async () => {
+    const methods: string[] = [];
+    const result = await mxDispatchTask(
+      { task_id: SEC_DISPATCH_TASK_ID },
+      makeDispatchSecDeps({ room: undefined, onMethod: (m) => methods.push(m) }),
+    );
+    expect(result.status).toBe('error');
+    expect(result.error?.code).toBe('internal');
+    expect(methods).toHaveLength(0);
+  });
+
+  it('error.message does not contain raw room or credential values', async () => {
+    const result = await mxDispatchTask(
+      { task_id: SEC_DISPATCH_TASK_ID },
+      makeDispatchSecDeps({ room: undefined }),
+    );
+    expect(result.error?.message).not.toContain('matrix_token');
+    expect(result.error?.message).not.toContain('signing_key');
+  });
+});
+
+describe('mxDispatchTask — no authority-mutation RPCs (security)', () => {
+  const FORBIDDEN_METHODS = [
+    'trust.publish', 'trust.approve', 'trust.revoke',
+    'approval.decide', 'approval.grant',
+    'policy.update', 'policy.set',
+    'auth.login', 'device.verify.start',
+  ];
+
+  it('never calls an authority-mutation method', async () => {
+    const methods: string[] = [];
+    await mxDispatchTask(
+      { task_id: SEC_DISPATCH_TASK_ID },
+      makeDispatchSecDeps({ onMethod: (m) => methods.push(m) }),
+    );
+    for (const forbidden of FORBIDDEN_METHODS) {
+      expect(methods, `must not call ${forbidden}`).not.toContain(forbidden);
+    }
+  });
+});
+
+describe('mxDispatchTask — error.message is secret-free (security)', () => {
+  it('denied error.message does not echo the raw daemon payload', async () => {
+    const SENSITIVE = 'mxs_sec_signing_key_do_not_leak';
+    const err = new TransportError('rpc', SENSITIVE, {
+      cause: { error: { code: 'policy_denied', message: SENSITIVE } },
+    });
+    const result = await mxDispatchTask(
+      { task_id: SEC_DISPATCH_TASK_ID },
+      makeDispatchSecDeps({ callError: err }),
+    );
+    expect(result.error?.message).not.toContain(SENSITIVE);
+  });
+});
+
+describe('mxDispatchTask — all result envelopes pass ENVELOPE_SCHEMA', () => {
+  it('mxDispatchTask ok', async () => {
+    const result = await mxDispatchTask({ task_id: SEC_DISPATCH_TASK_ID }, makeDispatchSecDeps());
+    expect(validateEnvelope(result)).toBe(true);
+  });
+
+  it('mxDispatchTask denied (policy_denied)', async () => {
+    const err = new TransportError('rpc', 'err', { cause: { error: { code: 'policy_denied' } } });
+    const result = await mxDispatchTask({ task_id: SEC_DISPATCH_TASK_ID }, makeDispatchSecDeps({ callError: err }));
+    expect(validateEnvelope(result)).toBe(true);
+  });
+
+  it('mxDispatchTask error (room missing)', async () => {
+    const result = await mxDispatchTask({ task_id: SEC_DISPATCH_TASK_ID }, makeDispatchSecDeps({ room: undefined }));
     expect(validateEnvelope(result)).toBe(true);
   });
 });

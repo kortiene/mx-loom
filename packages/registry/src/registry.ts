@@ -62,8 +62,8 @@ function isPlainObject(value: unknown): value is Record<string, unknown> {
  *  5. **Secret-free input shape** — no `input_schema` property name is
  *     credential-shaped.
  *
- * @param descriptors defaults to {@link CANONICAL_TOOLS} (the full 12-verb set: the
- *   9 M1 verbs + the 3 M3 task verbs); an explicit array is the test seam for
+ * @param descriptors defaults to {@link CANONICAL_TOOLS} (the full 13-verb set: the
+ *   9 M1 verbs + the 4 M3 task verbs); an explicit array is the test seam for
  *   validating a deliberately-bad descriptor.
  * @param validator defaults to the Ajv-backed {@link createAjvValidator}.
  */

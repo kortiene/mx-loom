@@ -17,8 +17,8 @@ export { loadRegistry, DescriptorValidationError } from './registry.js';
 export type { ToolRegistry } from './registry.js';
 
 // The canonical descriptor sets (+ the individual descriptor consts). `CANONICAL_TOOLS`
-// is the full 12-verb superset every binding/loader defaults to; `CANONICAL_M1_TOOLS`
-// (9) and `CANONICAL_M3_TASK_TOOLS` (3) are documented subsets.
+// is the full 13-verb superset every binding/loader defaults to; `CANONICAL_M1_TOOLS`
+// (9) and `CANONICAL_M3_TASK_TOOLS` (4) are documented subsets.
 export {
   CANONICAL_TOOLS,
   CANONICAL_M1_TOOLS,
@@ -35,6 +35,7 @@ export {
   MX_CREATE_TASK,
   MX_UPDATE_TASK,
   MX_LIST_TASKS,
+  MX_DISPATCH_TASK,
 } from './descriptors/index.js';
 
 // The JSON Schema validation seam (Ajv-backed by default; injectable).
@@ -195,3 +196,16 @@ export type {
   TaskState,
   TaskAction,
 } from './handlers/index.js';
+
+// The task-action dispatch handler (T303): `mx_dispatch_task` — the M3 verb that
+// takes a node's authored, signed `action` and runs it through the IDENTICAL
+// receiver-side authorize pipeline as a direct delegation/exec (a `kind: 'tool'`
+// action via `call.start`, a `kind: 'exec'` action via `exec.start`), so the AC ("a
+// task action runs through the full authorize pipeline on dispatch") holds by
+// construction. Authoring an action is never authorizing it: dispatch re-runs
+// authorize from scratch on the receiver; the handler makes no trust/policy/approval
+// decision. Plus the shared, pure `actionToDispatch` mapper — the single source of
+// truth aligning what `mx_create_task` authors with what dispatch runs — and its
+// `ActionDispatch` shape. The dispatch deps are the delegation deps (`DispatchDeps`).
+export { mxDispatchTask, actionToDispatch, dispatchToCreateActionParam, isInvalidDispatch } from './handlers/index.js';
+export type { DispatchTaskInput, ActionDispatch, InvalidActionDispatch, DispatchDeps } from './handlers/index.js';
