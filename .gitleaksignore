@@ -28,3 +28,8 @@ packages/mcp/test/secret-boundary.test.ts:github-pat:184
 # secret-boundary test (T110) — a named, "for testing purposes only" stub that
 # fails GitHub's PAT checksum. Allowlisted for the same reason as the MCP one.
 packages/claude/test/secret-boundary.test.ts:github-pat:190
+
+# Same `FAKE_GH_PAT` guard fixture in the Pi binding's secret-boundary test
+# (T205) — a named, "for testing purposes only" stub that fails GitHub's PAT
+# checksum. Allowlisted for the same reason as the MCP/Claude ones.
+packages/pi/test/secret-boundary.test.ts:github-pat:147

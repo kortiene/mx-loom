@@ -1,0 +1,45 @@
+{
+  "name": "@mx-loom/pi",
+  "version": "0.0.0",
+  "private": true,
+  "license": "Apache-2.0",
+  "description": "mx-loom Pi binding (T205). Pi ships no built-in MCP client (T204), so the nine canonical `mx_*` verbs are registered through Pi's NATIVE tool API (SDK `customTools` / extension `registerTool`), generated from `@mx-loom/registry` — never hand-authored. Each descriptor's draft-07 `input_schema` is converted fail-closed to a Pi TypeBox schema (enums → `StringEnum`, never `Type.Union`), execution routes through the shared registry handlers + the secret-free `@mx-loom/toolbelt` daemon seam, and the T102 envelope serializes into Pi's `AgentToolResult` (full envelope in both `content` and `details`). Secret-free by construction; every authority decision stays out-of-process on the receiving daemon. The TypeBox `Type`/`StringEnum` builders are INJECTED by the host (resolved from Pi's own tree) so there is a single TypeBox runtime and no heavy/native dependency leaks into consumers.",
+  "type": "module",
+  "engines": {
+    "node": ">=20.19"
+  },
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "build": "tsc -p tsconfig.build.json",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@mx-loom/audit": "workspace:*",
+    "@mx-loom/registry": "workspace:*",
+    "@mx-loom/toolbelt": "workspace:*"
+  },
+  "peerDependencies": {
+    "@earendil-works/pi-ai": ">=0.74.0",
+    "@earendil-works/pi-coding-agent": ">=0.74.0",
+    "typebox": "^1.1.0"
+  },
+  "peerDependenciesMeta": {
+    "@earendil-works/pi-ai": {
+      "optional": true
+    },
+    "@earendil-works/pi-coding-agent": {
+      "optional": true
+    },
+    "typebox": {
+      "optional": true
+    }
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.0",
+    "typescript": "^5.9.3",
+    "vitest": "^4.1.8"
+  }
+}

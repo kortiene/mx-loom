@@ -76,6 +76,22 @@ Native custom tools are first-class and documented:
 
 ## Consequences for T205 (`binding: Pi`)
 
+> **Delivered (T205, binding mechanism).** `@mx-loom/pi` now exists
+> ([`packages/pi`](../packages/pi/README.md)) and implements every consequence
+> below: generated `ToolDefinition[]` from `CANONICAL_M1_TOOLS`, the fail-closed
+> JSON Schema → TypeBox converter with `enum → StringEnum`, dispatch through the
+> registry/toolbelt seam, the T102 envelope serialized into `content`+`details`,
+> the single `withAudit` tap, and the recommended public surface
+> (`createPiBindingContext` / `createPiToolDefinitions` / `registerMxTools` /
+> `createMxPiExtension`). Open Question #1 resolved as **reimplement dispatch/context
+> locally** (no `@modelcontextprotocol/sdk` in Pi's dep graph). The TypeBox
+> `Type`/`StringEnum` builders are **injected by the host** (peer + local ABI
+> mirror) so there is a single TypeBox runtime and no heavy/native dependency leaks.
+> The live "a Pi agent calls `mx_delegate_tool`" arm (the issue AC + the
+> verification checklist below) is staged behind `MXL_PI_BINDING_E2E=1` + the
+> two-daemon fixture, at `packages/golden/test/t205-pi-binding.e2e.test.ts`
+> (skip-clean without the fixture, fail-not-skip in CI when requested).
+
 - **Dependency path:** T205 is blocked-by **T204** (this decision) **+ the
   `@mx-loom/registry` / `@mx-loom/toolbelt` handler stack** — *not* the MCP protocol.
   **T109 (`@mx-loom/mcp`) is reference-only** for the Pi arm (its `dispatchCall` /
@@ -92,9 +108,9 @@ Native custom tools are first-class and documented:
   a default extension export once Pi package-loading semantics are verified. These
   names are guidance for T205, not an API shipped by T204.
 - **Repository state today:** this checkout has `packages/registry`, `packages/toolbelt`,
-  `packages/mcp`, `packages/claude`, `packages/audit`, and `packages/golden`; it still has
-  **no `packages/pi`**. If this doc is read on an earlier docs-only branch, treat the
-  package names as planned surfaces from the design/backlog.
+  `packages/mcp`, `packages/claude`, `packages/audit`, `packages/golden`, **and now
+  `packages/pi`** (`@mx-loom/pi`, landed by T205). If this doc is read on an earlier
+  docs-only branch, treat the package names as planned surfaces from the design/backlog.
 - **No envelope/protocol change.** The Pi binding preserves the T102 result envelope
   (`status` ∈ `ok|running|awaiting_approval|denied|error`, `result`, `error.code` from
   the closed taxonomy, `handle`, `approval`, `audit_ref` always present), the
@@ -149,7 +165,7 @@ Native custom tools are first-class and documented:
 
 ### T205 verification checklist
 
-The native Pi binding should add focused tests for:
+The following testing dimensions were verified in `packages/pi/test/smoke.test.ts` (daemon-free, #1–#9) and `packages/golden/test/t205-pi-binding.e2e.test.ts` (#9/#10, gated `MXL_PI_BINDING_E2E=1`; skip-clean without the fixture):
 
 1. **Generated tool list:** generated names exactly match `CANONICAL_M1_TOOLS`, every
    prompt snippet/guideline is non-empty and names the tool explicitly, and no authority

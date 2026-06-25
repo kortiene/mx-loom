@@ -18,6 +18,7 @@
     "@mx-loom/audit": "workspace:*",
     "@mx-loom/claude": "workspace:*",
     "@mx-loom/mcp": "workspace:*",
+    "@mx-loom/pi": "workspace:*",
     "@mx-loom/registry": "workspace:*",
     "@mx-loom/toolbelt": "workspace:*"
   },
