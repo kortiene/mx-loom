@@ -1,0 +1,86 @@
+# Conformance fixture substrate — a THROWAWAY Matrix homeserver + Postgres for the
+# live two-daemon golden fixture (T114) and the audit-mirror arm (MXL_AUDIT_PG).
+# Ephemeral (emptyDir): delete the namespace to scrub everything.
+#
+# All values here are DEV-ONLY throwaway credentials for an isolated, ephemeral,
+# non-federated homeserver in its own namespace — never real secrets.
+#
+#   kubectl apply -f scripts/conformance/k8s/substrate.yaml
+#
+# Then reach the services by CLUSTER IP (the runner pod uses an external resolver
+# and cannot resolve in-cluster service DNS — see README.md):
+#   kubectl -n mx-golden get svc tuwunel postgres -o jsonpath='{...clusterIP}'
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: mx-golden
+  labels: { app.kubernetes.io/part-of: mx-loom-conformance }
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata: { name: tuwunel, namespace: mx-golden }
+spec:
+  replicas: 1
+  selector: { matchLabels: { app: tuwunel } }
+  template:
+    metadata: { labels: { app: tuwunel } }
+    spec:
+      containers:
+        - name: tuwunel
+          image: ghcr.io/matrix-construct/tuwunel:latest
+          ports: [{ containerPort: 6167, name: http }]
+          env:
+            - { name: TUWUNEL_SERVER_NAME, value: "mxg.local" }
+            - { name: TUWUNEL_ADDRESS, value: "0.0.0.0" }
+            - { name: TUWUNEL_PORT, value: "6167" }
+            - { name: TUWUNEL_ALLOW_REGISTRATION, value: "true" }
+            # Dev-only single-stage registration token (isolated throwaway HS).
+            - { name: TUWUNEL_REGISTRATION_TOKEN, value: "mxg-dev-regtoken" }
+            - { name: TUWUNEL_ALLOW_FEDERATION, value: "false" }
+            - { name: TUWUNEL_DATABASE_PATH, value: "/var/lib/tuwunel" }
+          volumeMounts: [{ name: data, mountPath: /var/lib/tuwunel }]
+          readinessProbe:
+            httpGet: { path: /_matrix/client/versions, port: 6167 }
+            initialDelaySeconds: 5
+            periodSeconds: 5
+      volumes: [{ name: data, emptyDir: {} }]
+---
+apiVersion: v1
+kind: Service
+metadata: { name: tuwunel, namespace: mx-golden }
+spec:
+  selector: { app: tuwunel }
+  ports: [{ port: 8008, targetPort: 6167, name: http }]
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata: { name: postgres, namespace: mx-golden }
+spec:
+  replicas: 1
+  selector: { matchLabels: { app: postgres } }
+  template:
+    metadata: { labels: { app: postgres } }
+    spec:
+      containers:
+        - name: postgres
+          image: postgres:16
+          ports: [{ containerPort: 5432, name: pg }]
+          env:
+            - { name: POSTGRES_USER, value: "postgres" }
+            # Dev-only throwaway password for an ephemeral in-namespace database.
+            - { name: POSTGRES_PASSWORD, value: "postgres" }
+            - { name: POSTGRES_DB, value: "mx_audit" }
+            - { name: PGDATA, value: "/var/lib/postgresql/data/pgdata" }
+          volumeMounts: [{ name: data, mountPath: /var/lib/postgresql/data }]
+          readinessProbe:
+            exec: { command: ["pg_isready", "-U", "postgres"] }
+            initialDelaySeconds: 5
+            periodSeconds: 5
+      volumes: [{ name: data, emptyDir: {} }]
+---
+apiVersion: v1
+kind: Service
+metadata: { name: postgres, namespace: mx-golden }
+spec:
+  selector: { app: postgres }
+  ports: [{ port: 5432, targetPort: 5432, name: pg }]

@@ -37,6 +37,15 @@ if ! curl -fsSL "$URL" -o "$CONF_STATE_DIR/mx-agent.tar.gz"; then
   die "failed to download the pinned mx-agent release asset ($URL). Set MX_AGENT_REPO / MX_AGENT_RELEASE_BASE / MX_AGENT_ASSET, or vendor the binary (see scripts/conformance/README.md)."
 fi
 tar -xzf "$CONF_STATE_DIR/mx-agent.tar.gz" -C "$CONF_STATE_DIR/bin"
+# The release asset may place `mx-agent` at the archive ROOT or NESTED under a
+# `<name>-<ver>-<triple>/` directory (the v0.2.1 cargo-dist layout ships the
+# binary, man pages, and shell completions under such a dir). Normalize so the
+# binary is always resolvable at `$CONF_STATE_DIR/bin/mx-agent`.
+if [ ! -x "$CONF_STATE_DIR/bin/mx-agent" ]; then
+  found="$(find "$CONF_STATE_DIR/bin" -maxdepth 3 -type f -name mx-agent | head -1)"
+  [ -n "$found" ] || die "could not locate the mx-agent binary in the extracted asset ($ASSET)"
+  ln -sf "$found" "$CONF_STATE_DIR/bin/mx-agent"
+fi
 chmod +x "$CONF_STATE_DIR/bin/mx-agent" 2>/dev/null || true
 
 # Put it on PATH for subsequent steps.
