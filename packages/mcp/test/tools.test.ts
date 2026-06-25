@@ -6,7 +6,7 @@
  */
 import { describe, expect, it } from 'vitest';
 
-import { CANONICAL_M1_TOOLS, ENVELOPE_SCHEMA, FORBIDDEN_AUTHORITY_VERBS } from '@mx-loom/registry';
+import { CANONICAL_M1_TOOLS, CANONICAL_TOOLS, ENVELOPE_SCHEMA, FORBIDDEN_AUTHORITY_VERBS } from '@mx-loom/registry';
 import type { ToolDescriptor } from '@mx-loom/registry';
 
 import { ASYNC_SEMANTICS_META_KEY, buildToolList } from '../src/tools.js';
@@ -14,9 +14,9 @@ import { ASYNC_SEMANTICS_META_KEY, buildToolList } from '../src/tools.js';
 describe('buildToolList', () => {
   const tools = buildToolList();
 
-  it('lists exactly the nine canonical verbs, in order', () => {
-    expect(tools).toHaveLength(9);
-    expect(tools.map((t) => t.name)).toEqual(CANONICAL_M1_TOOLS.map((d) => d.name));
+  it('lists exactly the twelve canonical verbs, in order', () => {
+    expect(tools).toHaveLength(12);
+    expect(tools.map((t) => t.name)).toEqual(CANONICAL_TOOLS.map((d) => d.name));
   });
 
   it('passes name/description/inputSchema through verbatim', () => {

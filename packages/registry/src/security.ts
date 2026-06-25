@@ -17,9 +17,12 @@
 
 /**
  * The complete universe of known model-facing `mx_*` verbs (design §2, §8). The
- * default registry now loads all **9** M1 verbs: the 7 P0 verbs (T101) + the 2 P1
- * verbs `mx_cancel` / `mx_workspace_status` (T108, alongside their handlers). The
- * security regression test asserts the default set is a subset of this allowlist.
+ * default registry now loads all **12** verbs: the 7 P0 M1 verbs (T101) + the 2 P1
+ * M1 verbs `mx_cancel` / `mx_workspace_status` (T108) + the 3 M3 task-DAG verbs
+ * `mx_create_task` / `mx_update_task` / `mx_list_tasks` (T301). The security
+ * regression test asserts the default set is a subset of this allowlist. Task verbs
+ * are plan-authoring verbs, not governance verbs — the forbidden-authority check is
+ * untouched.
  */
 export const MODEL_FACING_ALLOWLIST = [
   'mx_find_agents',
@@ -29,9 +32,13 @@ export const MODEL_FACING_ALLOWLIST = [
   'mx_await_result',
   'mx_share_context',
   'mx_get_context',
-  // P1 (T108) — the cancel + workspace-observe verbs, now in the canonical set.
+  // P1 (T108) — the cancel + workspace-observe verbs.
   'mx_cancel',
   'mx_workspace_status',
+  // M3 (T301) — the task-DAG verbs (author + read the durable shared plan).
+  'mx_create_task',
+  'mx_update_task',
+  'mx_list_tasks',
 ] as const;
 
 /**

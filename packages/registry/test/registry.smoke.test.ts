@@ -32,6 +32,10 @@ describe('loadRegistry (T101 smoke)', () => {
       'mx_get_context',
       'mx_cancel',
       'mx_workspace_status',
+      // M3 (T301) — the task-DAG verbs.
+      'mx_create_task',
+      'mx_update_task',
+      'mx_list_tasks',
     ]);
     expect(registry.has('mx_delegate_tool')).toBe(true);
     expect(registry.get('mx_delegate_tool')?.async_semantics).toBe('deferred');
@@ -50,7 +54,7 @@ describe('loadRegistry (T101 smoke)', () => {
       inputSchema: d.input_schema,
       deferred: d.async_semantics === 'deferred',
     }));
-    expect(tools).toHaveLength(9);
+    expect(tools).toHaveLength(12);
     expect(tools.every((t) => t.name.startsWith('mx_') && t.description.length > 0)).toBe(true);
   });
 

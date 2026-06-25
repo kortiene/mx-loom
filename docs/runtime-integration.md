@@ -13,7 +13,7 @@ sandbox, approval). mx-loom only translates — it holds no secret, runs no mode
 and enforces nothing. For the full architecture see
 [`mx-agent-tool-fabric-design.md`](./mx-agent-tool-fabric-design.md) §1 and §3.
 
-> **Build rule.** One canonical descriptor set → every binding. The nine `mx_*`
+> **Build rule.** One canonical descriptor set → every binding. The twelve `mx_*`
 > verbs are **generated** from [`@mx-loom/registry`](../packages/registry); no
 > binding is ever hand-authored per runtime. This guide is a **hub**: each section
 > gives the single default recipe and links the per-runtime README as the
@@ -36,7 +36,7 @@ the **same** generated `mx-loom-mcp` server. Claude (in-process) and Pi (native
 registration) link the library directly — same descriptors, same envelope, no
 socket.
 
-## The nine canonical verbs
+## The twelve canonical verbs
 
 Every runtime surfaces exactly these — and **only** these:
 
@@ -51,6 +51,15 @@ Every runtime surfaces exactly these — and **only** these:
 | `mx_get_context` | Fetch shared context by id | sync |
 | `mx_cancel` | Cancel an in-flight invocation | sync |
 | `mx_workspace_status` | Registered agents + project context | sync |
+| `mx_create_task` | Author a task (with deps + a signed action) into the shared plan (DAG) | sync |
+| `mx_update_task` | Transition a task's state / re-assign / adjust edges | sync |
+| `mx_list_tasks` | Read the shared plan as a DAG (nodes + edges) or a flat list | sync |
+
+The last three are the **M3 task-DAG verbs (T301)** — they let cognition author
+and read the durable shared plan (`com.mxagent.task.v1`). They author (but do
+**not** dispatch) a task's signed `action`; dispatching it through the authorize
+pipeline is **T303**. The exact `task.*` wire shapes are staged behind the
+two-daemon conformance fixture.
 
 **No** `trust.*` / `approval.decide` / `policy.*` / `auth.*` / `device.*` /
 `daemon.*` verb is ever surfaced — they are **structurally unreachable**.
@@ -174,7 +183,7 @@ agent = LlmAgent(
 
 `mx_mcp_toolset(...)` returns an `MCPToolset` connected to a local
 `mx-loom-mcp --stdio` subprocess spawned with the deny-by-default
-`safe_mx_mcp_env()`. **What the model sees:** the nine `mx_*` tools and the T102
+`safe_mx_mcp_env()`. **What the model sees:** the twelve `mx_*` tools and the T102
 envelope — nothing else.
 
 **Alternate mode — native long-running (T202).** For approval-aware delegation,
@@ -267,7 +276,7 @@ Add a `mcpServers` entry pointing at `mx-loom-mcp --stdio`:
 Append the non-secret session flags to `args` to map this client to a workspace
 room (`"--room", "!workspace:server", "--correlation-id", "claude_<session-id>"`)
 — see [the CLI surface](#the-mx-loom-mcp-cli-surface). **What the model sees:** the
-nine `mx_*` tools and the T102 envelope; generic MCP has no native long-running
+twelve `mx_*` tools and the T102 envelope; generic MCP has no native long-running
 protocol, so `running` / `awaiting_approval` surface as ordinary results resolved
 with `mx_await_result(handle)`.
 
@@ -356,7 +365,7 @@ are additionally pinned daemon-free by
 
 Pi ships **no built-in MCP client** (the T204 decision —
 [`docs/pi-tool-surface-capability.md`](./pi-tool-surface-capability.md)), so the Pi
-binding registers the nine verbs through Pi's **native tool API** instead of
+binding registers the twelve verbs through Pi's **native tool API** instead of
 mounting `mx-loom-mcp`. The schemas are still generated from `@mx-loom/registry`;
 enums become `StringEnum` (Google-provider-safe).
 
@@ -371,7 +380,7 @@ import { createPiBindingContext, createPiToolDefinitions, mxToolNames } from '@m
 //    liveness heartbeat). For tests, inject a session / bare DaemonCall instead.
 const ctx = await createPiBindingContext({ /* sessionOptions, auditSink */ });
 
-// 2. Generate the nine mx_* tools, injecting Pi's TypeBox builders.
+// 2. Generate the twelve mx_* tools, injecting Pi's TypeBox builders.
 const customTools = createPiToolDefinitions(ctx, { builders: { Type, StringEnum } });
 
 // 3. Hand them to Pi, and (optionally) activate ONLY the mx-loom verbs.
@@ -385,7 +394,7 @@ const { session } = await createAgentSession({
 Pi takes the Pi SDK, TypeBox, and `@earendil-works/pi-ai` as **peer**
 dependencies and the `Type` / `StringEnum` builders are **injected by you**
 (resolved from Pi's own tree, so a single TypeBox runtime satisfies Pi's `[Kind]`
-identity check). **What the model sees:** the nine verbs in `content`+`details`
+identity check). **What the model sees:** the twelve verbs in `content`+`details`
 (Pi has no MCP `structuredContent` channel); deferred results stay **model-driven**
 — `promptGuidelines` tell the model to call `mx_await_result(handle)` (no hidden
 poll loop).
@@ -405,7 +414,7 @@ tools for free. Two paths:
 
 Point it at `mx-loom-mcp --stdio` (or `--http` on localhost) **exactly like Claude
 Code** above. The `tools/list` (each descriptor's draft-07 `input_schema` passed
-through verbatim), the T102 envelope on every `CallToolResult`, and the nine verbs
+through verbatim), the T102 envelope on every `CallToolResult`, and the twelve verbs
 are identical across every MCP-mounting runtime. Append the non-secret session
 flags (`--room` / `--correlation-id` / …) to your spawn argv; never a credential.
 

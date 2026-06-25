@@ -29,7 +29,7 @@ export type { ConvertOptions } from './json-schema-to-zod.js';
 // T110 — the in-process shim.
 // ---------------------------------------------------------------------------
 
-// The tool-server builder — `CANONICAL_M1_TOOLS` → `tool()[]` → `createSdkMcpServer`.
+// The tool-server builder — `CANONICAL_TOOLS` → `tool()[]` → `createSdkMcpServer`.
 export {
   createMxToolServer,
   DEFAULT_SERVER_VERSION,

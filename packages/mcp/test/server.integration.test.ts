@@ -15,7 +15,7 @@ import type { CallToolResult } from '@modelcontextprotocol/sdk/types.js';
 import { InMemoryTransport } from '@modelcontextprotocol/sdk/inMemory.js';
 import { afterEach, describe, expect, it } from 'vitest';
 
-import { CANONICAL_M1_TOOLS } from '@mx-loom/registry';
+import { CANONICAL_TOOLS } from '@mx-loom/registry';
 import type { DaemonCall } from '@mx-loom/registry';
 
 import { createBindingContext } from '../src/context.js';
@@ -62,12 +62,12 @@ afterEach(async () => {
 });
 
 describe('MCP server in-memory round-trip', () => {
-  it('AC1 — tools/list returns the nine canonical tools with verbatim schemas', async () => {
+  it('AC1 — tools/list returns the twelve canonical tools with verbatim schemas', async () => {
     const client = await connect(fakeDaemon(() => ({ ok: true, result: {} })));
     const { tools } = await client.listTools();
 
-    expect(tools.map((t) => t.name)).toEqual(CANONICAL_M1_TOOLS.map((d) => d.name));
-    for (const descriptor of CANONICAL_M1_TOOLS) {
+    expect(tools.map((t) => t.name)).toEqual(CANONICAL_TOOLS.map((d) => d.name));
+    for (const descriptor of CANONICAL_TOOLS) {
       const tool = tools.find((t) => t.name === descriptor.name)!;
       expect(tool.inputSchema).toEqual(descriptor.input_schema);
     }

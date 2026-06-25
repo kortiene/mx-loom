@@ -33,3 +33,11 @@ packages/claude/test/secret-boundary.test.ts:github-pat:190
 # (T205) — a named, "for testing purposes only" stub that fails GitHub's PAT
 # checksum. Allowlisted for the same reason as the MCP/Claude ones.
 packages/pi/test/secret-boundary.test.ts:github-pat:147
+
+# The task-projection redaction test (T301) proves `projectTaskNode` strips
+# non-allowlisted fields: its fixture seeds secret-shaped values (a Matrix token
+# and an Ed25519 signing-key stub, neither real key material) to assert they
+# never reach the projected node. gitleaks' broad `generic-api-key` rule matches
+# the stub's shape, so it flags the very test that proves redaction works.
+# (NB: do not quote the literal stub here — gitleaks scans this file too.)
+packages/registry/test/handlers/task-projection.test.ts:generic-api-key:307

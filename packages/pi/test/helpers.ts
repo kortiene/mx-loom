@@ -58,7 +58,7 @@ export const fakeBuilders: TypeBoxBuilders = {
   },
 };
 
-/** Stub daemon responses sufficient for all nine canonical verbs. */
+/** Stub daemon responses sufficient for all twelve canonical verbs (M1 + M3 task). */
 export function makeFakeDaemon(
   onCall?: (method: string, params: unknown) => void,
 ): DaemonCall {
@@ -108,6 +108,27 @@ export function makeFakeDaemon(
           return { context_id: 'ctx_1', kind: 'file' };
         case 'workspace.status':
           return { room_id: ROOM, name: 'test workspace', encrypted: false };
+        // M3 (T301) — task-DAG verbs.
+        case 'task.create':
+        case 'task.update':
+          return {
+            task_id: 'task_pi_stub_1',
+            title: 'Pi stub task',
+            state: 'proposed',
+            depends_on: [],
+            blocks: [],
+            action: null,
+            audit_ref: {
+              invocation_id: 'inv_pi_t1',
+              request_id: 'req_pi_t1',
+              room: ROOM,
+              event_id: '$pi_tevt_1',
+            },
+          };
+        case 'task.list':
+          return { tasks: [] };
+        case 'task.graph':
+          return [];
         default:
           throw new Error(`unexpected daemon method in pi test: ${method}`);
       }

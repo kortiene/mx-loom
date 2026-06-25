@@ -6,7 +6,7 @@
  * (fail-fast). "Loader" here means "assemble + validate the static set", not a
  * dynamic file/remote/plugin discovery mechanism (an explicit Non-Goal).
  */
-import { CANONICAL_M1_TOOLS } from './descriptors/index.js';
+import { CANONICAL_TOOLS } from './descriptors/index.js';
 import { TOOL_NAME_RE, type ToolDescriptor } from './descriptor.js';
 import { deepFreeze } from './freeze.js';
 import { findCredentialShapedProperty, isForbiddenAuthorityVerb } from './security.js';
@@ -62,12 +62,13 @@ function isPlainObject(value: unknown): value is Record<string, unknown> {
  *  5. **Secret-free input shape** — no `input_schema` property name is
  *     credential-shaped.
  *
- * @param descriptors defaults to {@link CANONICAL_M1_TOOLS}; an explicit array is
- *   the test seam for validating a deliberately-bad descriptor.
+ * @param descriptors defaults to {@link CANONICAL_TOOLS} (the full 12-verb set: the
+ *   9 M1 verbs + the 3 M3 task verbs); an explicit array is the test seam for
+ *   validating a deliberately-bad descriptor.
  * @param validator defaults to the Ajv-backed {@link createAjvValidator}.
  */
 export function loadRegistry(
-  descriptors: readonly ToolDescriptor[] = CANONICAL_M1_TOOLS,
+  descriptors: readonly ToolDescriptor[] = CANONICAL_TOOLS,
   validator: SchemaValidator = createAjvValidator(),
 ): ToolRegistry {
   const byName = new Map<string, ToolDescriptor>();

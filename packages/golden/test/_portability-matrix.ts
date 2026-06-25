@@ -15,7 +15,7 @@
  * — it is a consumer/aggregator of the canonical surfaces. The only new "types"
  * here are test-internal (never exported from a package `exports`).
  */
-import { CANONICAL_M1_TOOLS, isForbiddenAuthorityVerb } from '@mx-loom/registry';
+import { CANONICAL_TOOLS, isForbiddenAuthorityVerb } from '@mx-loom/registry';
 import type { ErrorCode, ToolStatus } from '@mx-loom/registry';
 
 import { goldenPrereqError, type GoldenFixture } from './_golden-harness.js';
@@ -209,15 +209,16 @@ export function reduceMatrix(rows: readonly MatrixRow[]): MatrixVerdict {
 }
 
 // ---------------------------------------------------------------------------
-// Descriptor-identity invariant (G3) — the same nine mx_* names everywhere
+// Descriptor-identity invariant (G3) — the same canonical mx_* names everywhere
 // ---------------------------------------------------------------------------
 
-/** The nine canonical `mx_*` descriptor names (the single source of truth). */
-export const CANONICAL_TOOL_NAMES: readonly string[] = CANONICAL_M1_TOOLS.map((d) => d.name);
+/** The full canonical `mx_*` descriptor names (the single source of truth) — the
+ *  9 M1 verbs + the 3 M3 task-DAG verbs (T301), as every binding now surfaces them. */
+export const CANONICAL_TOOL_NAMES: readonly string[] = CANONICAL_TOOLS.map((d) => d.name);
 
 /** The result of checking a runtime's surfaced names against the canonical identity. */
 export interface IdentityCheck {
-  /** Exactly the nine canonical names, no extra, no missing, no authority verb. */
+  /** Exactly the canonical names, no extra, no missing, no authority verb. */
   readonly ok: boolean;
   /** Canonical names the runtime did not surface. */
   readonly missing: readonly string[];

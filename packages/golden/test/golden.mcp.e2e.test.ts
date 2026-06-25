@@ -26,7 +26,7 @@ import { randomUUID } from 'node:crypto';
 import type { CallToolResult } from '@modelcontextprotocol/sdk/types.js';
 import { InMemoryAuditSink } from '@mx-loom/audit';
 import {
-  CANONICAL_M1_TOOLS,
+  CANONICAL_TOOLS,
   isForbiddenAuthorityVerb,
   validateEnvelope,
   type ToolResult,
@@ -72,11 +72,11 @@ describe.skipIf(SKIP_GOLDEN)('GOLDEN e2e · arm A — @mx-loom/mcp binding', () 
   // No-authority surface — the model tool set is exactly the nine mx_* verbs.
   // -------------------------------------------------------------------------
 
-  it('tools/list surfaces only the nine mx_* verbs — no authority verb is reachable', async () => {
+  it('tools/list surfaces only the twelve mx_* verbs — no authority verb is reachable', async () => {
     if (!live) throw new Error('arm not initialised');
     const { tools } = await live.mcpClient.listTools();
 
-    expect(tools.map((t) => t.name).sort()).toEqual(CANONICAL_M1_TOOLS.map((d) => d.name).sort());
+    expect(tools.map((t) => t.name).sort()).toEqual(CANONICAL_TOOLS.map((d) => d.name).sort());
     for (const { name } of tools) {
       // trust.* / approval.decide / policy.* / auth.* / device.* / daemon.* — structurally absent.
       expect(isForbiddenAuthorityVerb(name), `forbidden authority verb in tools/list: ${name}`).toBe(false);

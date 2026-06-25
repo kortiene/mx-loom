@@ -22,6 +22,7 @@ import { NullAuditSink } from '@mx-loom/audit';
 import type { AuditTap, AuditPerCall } from '@mx-loom/audit';
 import {
   CANONICAL_M1_TOOLS,
+  CANONICAL_TOOLS,
   type AuditRef,
   type ToolResult,
   awaitingApproval,
@@ -68,9 +69,9 @@ function findTool(tools: ToolDefinition[], name: string): ToolDefinition {
 // ---------------------------------------------------------------------------
 
 describe('createPiToolDefinitions — generated list', () => {
-  it('count matches CANONICAL_M1_TOOLS', async () => {
+  it('count matches CANONICAL_TOOLS', async () => {
     const tools = await makeTools();
-    expect(tools).toHaveLength(CANONICAL_M1_TOOLS.length);
+    expect(tools).toHaveLength(CANONICAL_TOOLS.length);
   });
 
   it('each tool has a non-empty promptSnippet naming the tool', async () => {

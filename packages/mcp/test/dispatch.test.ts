@@ -16,7 +16,7 @@
  */
 import { describe, expect, it } from 'vitest';
 
-import { CANONICAL_M1_TOOLS, FORBIDDEN_AUTHORITY_VERBS, isForbiddenAuthorityVerb } from '@mx-loom/registry';
+import { CANONICAL_M1_TOOLS, CANONICAL_TOOLS, FORBIDDEN_AUTHORITY_VERBS, isForbiddenAuthorityVerb } from '@mx-loom/registry';
 import type { DaemonCall } from '@mx-loom/registry';
 import { NullAuditSink } from '@mx-loom/audit';
 
@@ -25,7 +25,7 @@ import type { BindingContext } from '../src/context.js';
 
 const ROOM = '!test-room:server';
 
-/** Minimal stub responses for every daemon method the nine handlers may call. */
+/** Minimal stub responses for every daemon method the twelve handlers may call. */
 function makeFakeDaemon(
   onCall?: (method: string, params: unknown) => void,
 ): DaemonCall {
@@ -65,6 +65,22 @@ function makeFakeDaemon(
           return { context_id: 'ctx_1', kind: 'file' };
         case 'workspace.status':
           return { room_id: ROOM, name: 'test room', encrypted: false };
+        // M3 (T301) — task-DAG verbs.
+        case 'task.create':
+        case 'task.update':
+          return {
+            task_id: 'task_stub_1',
+            title: 'Stub task',
+            state: 'proposed',
+            depends_on: [],
+            blocks: [],
+            action: null,
+            audit_ref: { invocation_id: 'inv_t1', request_id: 'req_t1', room: ROOM, event_id: '$tevt_1' },
+          };
+        case 'task.list':
+          return { tasks: [] };
+        case 'task.graph':
+          return [];
         default:
           throw new Error(`unexpected daemon method in dispatch test: ${method}`);
       }
@@ -101,6 +117,10 @@ const TOOL_ARGS: Readonly<Record<string, Record<string, unknown>>> = {
   mx_share_context: { kind: 'file', content: 'hello' },
   mx_get_context: { context_id: 'ctx_1' },
   mx_workspace_status: {},
+  // M3 (T301) task-DAG verbs.
+  mx_create_task: { title: 'Stub task' },
+  mx_update_task: { task_id: 'task_stub_1' },
+  mx_list_tasks: {},
 };
 
 // ---------------------------------------------------------------------------
@@ -108,8 +128,8 @@ const TOOL_ARGS: Readonly<Record<string, Record<string, unknown>>> = {
 // ---------------------------------------------------------------------------
 
 describe('DISPATCH table structure', () => {
-  it('has exactly the nine canonical tool names as keys', () => {
-    const canonical = new Set(CANONICAL_M1_TOOLS.map((d) => d.name));
+  it('has exactly the twelve canonical tool names as keys', () => {
+    const canonical = new Set(CANONICAL_TOOLS.map((d) => d.name));
     const keys = new Set(Object.keys(DISPATCH));
     expect(keys).toEqual(canonical);
   });
@@ -146,12 +166,26 @@ describe('dispatchCall', () => {
   });
 
   it.each(CANONICAL_M1_TOOLS)(
-    '$name: dispatches without throwing and returns a ToolResult',
+    '$name (M1): dispatches without throwing and returns a ToolResult',
     async ({ name }) => {
       const args = TOOL_ARGS[name] ?? {};
       const result = await dispatchCall(name, args, makeCtx());
       // Any of the five statuses is acceptable; what matters is that a ToolResult
       // (with status + audit_ref) is returned rather than an exception thrown.
+      expect(result).toHaveProperty('status');
+      expect(result).toHaveProperty('audit_ref');
+    },
+  );
+
+  it.each([
+    { name: 'mx_create_task' },
+    { name: 'mx_update_task' },
+    { name: 'mx_list_tasks' },
+  ])(
+    '$name (M3 task verb): dispatches without throwing and returns a ToolResult',
+    async ({ name }) => {
+      const args = TOOL_ARGS[name] ?? {};
+      const result = await dispatchCall(name, args, makeCtx());
       expect(result).toHaveProperty('status');
       expect(result).toHaveProperty('audit_ref');
     },
@@ -205,5 +239,39 @@ describe('room provenance', () => {
     // The handler fails fast before dispatching a room-less RPC.
     expect(result.status).toBe('error');
     expect(result.error?.code).toBe('internal');
+  });
+
+  it('mx_create_task: context room reaches the task.create daemon call', async () => {
+    const calls: Array<{ method: string; params: unknown }> = [];
+    const ctx = makeCtx({
+      room: '!task-room:server',
+      daemon: makeFakeDaemon((m, p) => calls.push({ method: m, params: p })),
+    });
+    await dispatchCall('mx_create_task', { title: 'Room test' }, ctx);
+    const createCall = calls.find((c) => c.method === 'task.create');
+    expect(createCall).toBeDefined();
+    expect((createCall?.params as Record<string, unknown>)?.['room']).toBe('!task-room:server');
+  });
+
+  it('mx_create_task: returns internal error when context has no room (fail-fast mutator)', async () => {
+    const ctx = makeCtx({ room: undefined });
+    const result = await dispatchCall('mx_create_task', { title: 'No room' }, ctx);
+    expect(result.status).toBe('error');
+    expect(result.error?.code).toBe('internal');
+  });
+
+  it('mx_update_task: returns internal error when context has no room (fail-fast mutator)', async () => {
+    const ctx = makeCtx({ room: undefined });
+    const result = await dispatchCall('mx_update_task', { task_id: 'task_x' }, ctx);
+    expect(result.status).toBe('error');
+    expect(result.error?.code).toBe('internal');
+  });
+
+  it('mx_list_tasks: succeeds (ok) with no room — best-effort read does not fail-fast', async () => {
+    const ctx = makeCtx({ room: undefined });
+    const result = await dispatchCall('mx_list_tasks', {}, ctx);
+    // The list handler is best-effort; it may return ok even with no room.
+    expect(result).toHaveProperty('status');
+    expect(result.status).toBe('ok');
   });
 });

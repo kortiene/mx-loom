@@ -34,7 +34,7 @@ import { resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 import {
-  CANONICAL_M1_TOOLS,
+  CANONICAL_TOOLS,
   DENIAL_CODES,
   FAULT_CODES,
   isForbiddenAuthorityVerb,
@@ -207,10 +207,10 @@ describe('examples/README.md — no credential-shaped content', () => {
 // 4. Canonical tool names — guide table matches CANONICAL_M1_TOOLS exactly
 // ---------------------------------------------------------------------------
 
-describe('docs/runtime-integration.md — nine canonical verbs table', () => {
-  // Extract the "nine canonical verbs" section, then pull out every
+describe('docs/runtime-integration.md — twelve canonical verbs table', () => {
+  // Extract the "twelve canonical verbs" section, then pull out every
   // backtick-wrapped `mx_*` verb from the first pipe-table in that section.
-  const verbsSection = extractSection(guideText, '## The nine canonical verbs');
+  const verbsSection = extractSection(guideText, '## The twelve canonical verbs');
 
   // Match table rows like: | `mx_find_agents` | ... |
   // Only the first column's backtick-wrapped mx_* name.
@@ -218,12 +218,12 @@ describe('docs/runtime-integration.md — nine canonical verbs table', () => {
     (m) => m[1]!,
   );
 
-  it('lists exactly nine mx_* verbs (one per canonical tool)', () => {
-    expect(toolNamesInGuide).toHaveLength(CANONICAL_M1_TOOLS.length);
+  it('lists exactly twelve mx_* verbs (one per canonical tool)', () => {
+    expect(toolNamesInGuide).toHaveLength(CANONICAL_TOOLS.length);
   });
 
-  it('names exactly match CANONICAL_M1_TOOLS (no missing, extra, or misspelled verb)', () => {
-    const registryNames = CANONICAL_M1_TOOLS.map((d) => d.name).sort();
+  it('names exactly match CANONICAL_TOOLS (no missing, extra, or misspelled verb)', () => {
+    const registryNames = CANONICAL_TOOLS.map((d) => d.name).sort();
     const guideNames = [...toolNamesInGuide].sort();
     expect(guideNames).toEqual(registryNames);
   });

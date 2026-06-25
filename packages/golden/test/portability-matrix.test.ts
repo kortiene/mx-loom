@@ -8,7 +8,7 @@
  * the descriptor-identity oracle. The live three-runtime arm is exercised only by
  * `pnpm test:e2e` (`portability-matrix.e2e.test.ts`).
  */
-import { CANONICAL_M1_TOOLS, MODEL_FACING_ALLOWLIST } from '@mx-loom/registry';
+import { CANONICAL_TOOLS, MODEL_FACING_ALLOWLIST } from '@mx-loom/registry';
 import { describe, expect, it } from 'vitest';
 
 import type { GoldenFixture } from './_golden-harness.js';
@@ -307,10 +307,10 @@ describe('portability matrix — portabilityPrereqError (fail-not-skip)', () => 
 // ---------------------------------------------------------------------------
 
 describe('portability matrix — descriptor identity', () => {
-  it('the canonical name-set is the nine model-facing mx_* verbs', () => {
-    expect(CANONICAL_TOOL_NAMES.length).toBe(9);
+  it('the canonical name-set is the twelve model-facing mx_* verbs', () => {
+    expect(CANONICAL_TOOL_NAMES.length).toBe(12);
     expect([...CANONICAL_TOOL_NAMES].sort()).toEqual([...MODEL_FACING_ALLOWLIST].sort());
-    expect([...CANONICAL_TOOL_NAMES].sort()).toEqual(CANONICAL_M1_TOOLS.map((d) => d.name).sort());
+    expect([...CANONICAL_TOOL_NAMES].sort()).toEqual(CANONICAL_TOOLS.map((d) => d.name).sort());
   });
 
   it('exact identity passes for the canonical set, no authority verb', () => {

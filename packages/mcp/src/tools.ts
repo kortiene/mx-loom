@@ -1,11 +1,11 @@
 /**
  * The tool generator (T109) — canonical descriptors → MCP `tools/list`.
  *
- * AC1 + the "one generation path" goal: enumerate {@link CANONICAL_M1_TOOLS} and
+ * AC1 + the "one generation path" goal: enumerate {@link CANONICAL_TOOLS} and
  * produce the MCP {@link Tool}[] for `tools/list`. Each MCP tool's `inputSchema`
  * is the descriptor's draft-07 JSON Schema **passed through verbatim** — exactly
  * what MCP's `inputSchema` field expects. There is **no** per-tool special-casing:
- * adding a tenth descriptor to `CANONICAL_M1_TOOLS` surfaces it over MCP with no
+ * adding a thirteenth descriptor to `CANONICAL_TOOLS` surfaces it over MCP with no
  * edit here.
  *
  * The advertised `outputSchema` is the **T102 {@link ENVELOPE_SCHEMA}**, NOT the
@@ -37,7 +37,7 @@
  * re-derive it.
  */
 import type { Tool } from '@modelcontextprotocol/sdk/types.js';
-import { CANONICAL_M1_TOOLS, ENVELOPE_SCHEMA } from '@mx-loom/registry';
+import { CANONICAL_TOOLS, ENVELOPE_SCHEMA } from '@mx-loom/registry';
 import type { ToolDescriptor } from '@mx-loom/registry';
 
 /** The `_meta` key carrying the descriptor's `async_semantics` (`sync`|`deferred`). */
@@ -45,7 +45,8 @@ export const ASYNC_SEMANTICS_META_KEY = 'io.mxloom/async_semantics';
 
 /**
  * Generate the MCP tool list from the canonical registry. Defaults to
- * {@link CANONICAL_M1_TOOLS}; takes an explicit descriptor set only for tests.
+ * {@link CANONICAL_TOOLS} (the full 12-verb set: the 9 M1 verbs + the 3 M3 task
+ * verbs); takes an explicit descriptor set only for tests.
  *
  * The returned `inputSchema` is the descriptor's own JSON Schema object (frozen) —
  * passed through by reference, never cloned or mutated — so a client lists exactly
@@ -53,7 +54,7 @@ export const ASYNC_SEMANTICS_META_KEY = 'io.mxloom/async_semantics';
  * T102 {@link ENVELOPE_SCHEMA} (the same frozen reference on every tool): the wire
  * shape of `structuredContent` is the envelope, so that is what a client validates.
  */
-export function buildToolList(descriptors: readonly ToolDescriptor[] = CANONICAL_M1_TOOLS): Tool[] {
+export function buildToolList(descriptors: readonly ToolDescriptor[] = CANONICAL_TOOLS): Tool[] {
   return descriptors.map(toMcpTool);
 }
 

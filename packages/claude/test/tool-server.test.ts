@@ -32,7 +32,7 @@ import { afterEach, describe, expect, it } from 'vitest';
 
 import { NullAuditSink } from '@mx-loom/audit';
 import {
-  CANONICAL_M1_TOOLS,
+  CANONICAL_TOOLS,
   FORBIDDEN_AUTHORITY_VERBS,
   isForbiddenAuthorityVerb,
 } from '@mx-loom/registry';
@@ -164,18 +164,18 @@ describe('server config shape', () => {
 // ---------------------------------------------------------------------------
 
 describe('tool registration', () => {
-  it('exactly nine tools are registered (matching CANONICAL_M1_TOOLS)', async () => {
+  it('exactly twelve tools are registered (matching CANONICAL_TOOLS)', async () => {
     const client = await connectServer(makeCtx());
     const { tools } = await client.listTools();
-    expect(tools).toHaveLength(CANONICAL_M1_TOOLS.length);
-    expect(tools).toHaveLength(9);
+    expect(tools).toHaveLength(CANONICAL_TOOLS.length);
+    expect(tools).toHaveLength(12);
   });
 
-  it('the registered tool names equal CANONICAL_M1_TOOLS names', async () => {
+  it('the registered tool names equal CANONICAL_TOOLS names', async () => {
     const client = await connectServer(makeCtx());
     const { tools } = await client.listTools();
     const registeredNames = new Set(tools.map((t) => t.name));
-    for (const descriptor of CANONICAL_M1_TOOLS) {
+    for (const descriptor of CANONICAL_TOOLS) {
       expect(registeredNames.has(descriptor.name)).toBe(true);
     }
   });

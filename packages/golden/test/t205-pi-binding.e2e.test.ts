@@ -13,7 +13,7 @@
  * This exercises the FULL Pi binding path (the "native registration" approach
  * mandated by T204's decision that Pi has no built-in MCP client):
  *  - createPiBindingContext opens a real MxSession (agent.register + heartbeat)
- *  - createPiToolDefinitions converts CANONICAL_M1_TOOLS → ToolDefinition[]
+ *  - createPiToolDefinitions converts CANONICAL_TOOLS → ToolDefinition[]
  *  - execute() routes through the Pi binding's dispatch → registry handlers →
  *    real toolbelt MxClient → live daemon A → daemon B
  *  - The T102 result envelope lands in Pi's AgentToolResult (content + details)
@@ -47,7 +47,7 @@ import {
 } from '@mx-loom/pi';
 import type { BindingContext, ToolDefinition } from '@mx-loom/pi';
 import {
-  CANONICAL_M1_TOOLS,
+  CANONICAL_TOOLS,
   isForbiddenAuthorityVerb,
   validateEnvelope,
 } from '@mx-loom/registry';
@@ -168,7 +168,7 @@ describe.skipIf(skipPiBinding)('T205 e2e · @mx-loom/pi — Pi agent calls mx_de
     });
 
     // -----------------------------------------------------------------------
-    // Generate Pi ToolDefinition[] from CANONICAL_M1_TOOLS (fail-closed).
+    // Generate Pi ToolDefinition[] from CANONICAL_TOOLS (fail-closed).
     // -----------------------------------------------------------------------
     tools = createPiToolDefinitions(ctx, { builders });
   }, 60_000);
@@ -184,7 +184,7 @@ describe.skipIf(skipPiBinding)('T205 e2e · @mx-loom/pi — Pi agent calls mx_de
 
   it('generates exactly the canonical mx_* verbs — no authority verb is reachable', () => {
     const names = tools.map((t) => t.name).sort();
-    expect(names).toEqual(CANONICAL_M1_TOOLS.map((d) => d.name).sort());
+    expect(names).toEqual(CANONICAL_TOOLS.map((d) => d.name).sort());
     for (const tool of tools) {
       // trust.* / approval.decide / policy.* / auth.* / device.* / daemon.*
       // must be structurally absent from the Pi native tool surface.

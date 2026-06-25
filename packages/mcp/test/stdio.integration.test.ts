@@ -20,7 +20,7 @@
  *
  * Tests:
  *   AC1 — `tools/list` through a real subprocess stdio boundary returns the
- *          nine canonical mx_* tools with verbatim JSON Schema input schemas.
+ *          twelve canonical mx_* tools with verbatim JSON Schema input schemas.
  *   AC2 — `tools/call` for `mx_delegate_tool` round-trips through the stdio
  *          framing layer and surfaces a normalized ok T102 envelope.
  *   Shutdown — SIGTERM sent to the fixture subprocess causes `server.close()`
@@ -38,7 +38,7 @@ import { StdioClientTransport } from '@modelcontextprotocol/sdk/client/stdio.js'
 import type { CallToolResult } from '@modelcontextprotocol/sdk/types.js';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 
-import { CANONICAL_M1_TOOLS } from '@mx-loom/registry';
+import { CANONICAL_TOOLS } from '@mx-loom/registry';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -83,14 +83,14 @@ describe('stdio transport — tools/list + tools/call', () => {
   });
 
   it(
-    'AC1 — tools/list returns the nine canonical mx_* tools with verbatim schemas',
+    'AC1 — tools/list returns the twelve canonical mx_* tools with verbatim schemas',
     async () => {
       if (!fix) throw new Error('fixture not initialised');
       const { tools } = await fix.client.listTools();
 
-      expect(tools).toHaveLength(CANONICAL_M1_TOOLS.length);
-      expect(tools.map((t) => t.name)).toEqual(CANONICAL_M1_TOOLS.map((d) => d.name));
-      for (const descriptor of CANONICAL_M1_TOOLS) {
+      expect(tools).toHaveLength(CANONICAL_TOOLS.length);
+      expect(tools.map((t) => t.name)).toEqual(CANONICAL_TOOLS.map((d) => d.name));
+      for (const descriptor of CANONICAL_TOOLS) {
         const tool = tools.find((t) => t.name === descriptor.name);
         expect(tool, `mx_* tool missing from tools/list via stdio: ${descriptor.name}`).toBeDefined();
         // inputSchema passes through verbatim — no Zod round-trip, no clone drift.
@@ -160,7 +160,7 @@ describe('stdio transport — SIGTERM shutdown', () => {
 
       // Confirm the connection is live.
       const { tools } = await client.listTools();
-      expect(tools).toHaveLength(CANONICAL_M1_TOOLS.length);
+      expect(tools).toHaveLength(CANONICAL_TOOLS.length);
 
       const pid = transport.pid;
       expect(pid).not.toBeNull();
