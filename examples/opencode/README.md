@@ -1,5 +1,7 @@
 # OpenCode × mx-loom — MCP server entry (T203 / #25)
 
+> Part of the [Runtime integration guide](../../docs/runtime-integration.md#opencode) — the hub with one verified setup per runtime. This README is the canonical OpenCode deep reference.
+
 Mount the generated **`mx-loom-mcp`** server from `opencode.json` so an OpenCode
 agent can discover and call the canonical `mx_*` coordination tools over MCP:
 

@@ -1,5 +1,7 @@
 # `@mx-loom/pi`
 
+> Part of the [Runtime integration guide](../../docs/runtime-integration.md#pi) — the hub with one verified setup per runtime. This README is the canonical Pi-binding deep reference.
+
 The mx-loom **Pi binding** (T205 / [#27](https://github.com/kortiene/mx-loom/issues/27)).
 
 Pi ([`@earendil-works/pi-coding-agent`](https://www.npmjs.com/package/@earendil-works/pi-coding-agent))

@@ -1,5 +1,7 @@
 # Google ADK × mx-loom — `MCPToolset` integration (T201 / #23)
 
+> Part of the [Runtime integration guide](../../docs/runtime-integration.md#google-adk) — the hub with one verified setup per runtime. This README is the canonical ADK deep reference.
+
 Mount the generated **`mx-loom-mcp`** server on a Google ADK
 [`LlmAgent`](https://google.github.io/adk-docs/) so the agent can discover and
 call the canonical `mx_*` coordination tools over MCP:

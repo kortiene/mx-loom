@@ -1,5 +1,7 @@
 # @mx-loom/claude
 
+> Part of the [Runtime integration guide](../../docs/runtime-integration.md#claude-agent-sdk) — the hub with one verified setup per runtime. This README is the canonical Claude-binding deep reference.
+
 The **Claude Agent SDK binding** for mx-loom (`area/claude-binding`).
 
 It ships its first module with **T111 / #19**: a **JSON Schema → Zod converter**.

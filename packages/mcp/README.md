@@ -1,5 +1,7 @@
 # @mx-loom/mcp
 
+> Part of the [Runtime integration guide](../../docs/runtime-integration.md#claude-code--desktop) — the hub with one verified setup per runtime. This README is the canonical deep reference for the generated server (Claude Code / Desktop, the ADK & OpenCode mounts, and custom runners).
+
 The **generated MCP server** for the mx-loom tool fabric (`area/mcp`, **T109 / #17**).
 
 It turns the canonical `@mx-loom/registry` descriptor set into a live **Model
