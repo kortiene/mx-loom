@@ -20,12 +20,28 @@ umask 077
 
 A_SOCKET="${A_SOCKET:-$CONF_STATE_DIR/a/runtime/mx-agent/daemon.sock}"
 A_ROOM="${A_ROOM:-${MXL_CONFORMANCE_ROOM:-}}"
-# Daemon A's agent id — v0.2.1 trust + the receiver policy are BOTH keyed on the
-# sender's agent id, so B must scope trust and policy to this exact id. Emitted by
-# bootstrap-daemon-a.sh as `sender_agent`.
+# Daemon A's agent id — TRUST is scoped to this id (`trust approve --agent`). Emitted
+# by bootstrap-daemon-a.sh as `sender_agent`.
 SENDER_AGENT="${MXL_CONFORMANCE_SENDER_AGENT:-${A_AGENT:-}}"
 [ -S "$A_SOCKET" ] || die "daemon A socket not found at $A_SOCKET — run bootstrap-daemon-a.sh first"
 [ -n "$A_ROOM" ]   || die "daemon A room unknown — pass A_ROOM (from bootstrap-daemon-a.sh output)"
+
+SERVER_NAME="${MXL_SERVER_NAME:-golden.local}"
+
+# Daemon A's Matrix user id — as of mx-agent v0.2.2 (kortiene/mx-agent#366) the
+# receiver POLICY is keyed on the sender's matrix_user_id (resolved from the signed
+# agent state), while TRUST stays scoped to the agent id above. Prefer an explicit
+# override; else read it from A's published agent state (by SENDER_AGENT), else
+# derive `@<localpart>:<server>` from the agent id (`<localpart>-<device>`).
+SENDER_USER="${MXL_CONFORMANCE_SENDER_USER:-}"
+if [ -z "$SENDER_USER" ] && [ -n "$SENDER_AGENT" ] && command -v jq >/dev/null 2>&1; then
+  SENDER_USER="$(XDG_RUNTIME_DIR="$CONF_STATE_DIR/a/runtime" XDG_DATA_HOME="$CONF_STATE_DIR/a/data" \
+    mx-agent agent list --room "$A_ROOM" --json 2>/dev/null \
+    | jq -r --arg a "$SENDER_AGENT" '.[] | (.agent // .) | select(.agent_id==$a) | .matrix_user_id' 2>/dev/null | head -n1)"
+fi
+if [ -z "$SENDER_USER" ] && [ -n "$SENDER_AGENT" ]; then
+  SENDER_USER="@${SENDER_AGENT%-*}:${SERVER_NAME}"   # localpart = agent id minus the trailing -<device>
+fi
 
 HS_URL="${MATRIX_HOMESERVER_URL:-http://127.0.0.1:8008}"
 TOOL="${MXL_CONFORMANCE_TOOL:-run_tests@1.0.0}"        # B publishes + policy ALLOWS
@@ -90,9 +106,16 @@ if [ "$POLICY_FIXTURE" = "policy.golden.toml" ] && [ -z "$SENDER_AGENT" ]; then
   die "golden policy needs the sender agent id — set MXL_CONFORMANCE_SENDER_AGENT (daemon A's \
 agent id, emitted by bootstrap-daemon-a.sh as 'sender_agent')."
 fi
+# The shipped fixtures key the agent rule on A's Matrix user id (v0.2.2 / #366); a
+# half-substituted `agents.""` would be malformed → silent deny-all, so require it.
+if grep -q '@@SENDER_USER@@' "$POLICY_SRC" && [ -z "$SENDER_USER" ]; then
+  die "policy $POLICY_FIXTURE needs daemon A's Matrix user id — set MXL_CONFORMANCE_SENDER_USER \
+(A's @user:server; mx-agent v0.2.2 keys the receiver policy on it, kortiene/mx-agent#366)."
+fi
 B_POLICY="$B_CONFIG/policy.toml"
 sed -e "s|@@ROOM@@|$A_ROOM|g" \
     -e "s|@@SENDER_AGENT@@|$SENDER_AGENT|g" \
+    -e "s|@@SENDER_USER@@|$SENDER_USER|g" \
     -e "s|@@ALLOW_TOOL@@|$TOOL|g" \
     -e "s|@@DENY_TOOL@@|$DENIED_TOOL|g" \
     -e "s|@@APPROVAL_TOOL@@|$APPROVAL_TOOL|g" \
@@ -119,8 +142,8 @@ MX_AGENT_PASSWORD="$B_PASS" mx-agent auth login --homeserver "$HS_URL" --user "$
 mx-agent workspace join "$A_ROOM" || die "daemon B failed to join $A_ROOM"
 
 # B needs the workspace agent power level (50) to publish agent state; A (room
-# creator, PL100) grants it to B's Matrix user after the join.
-SERVER_NAME="${MXL_SERVER_NAME:-golden.local}"
+# creator, PL100) grants it to B's Matrix user after the join. (SERVER_NAME is
+# resolved once near the top, alongside the sender's Matrix user id.)
 B_MXID="@${B_USER}:${SERVER_NAME}"
 XDG_RUNTIME_DIR="$CONF_STATE_DIR/a/runtime" XDG_DATA_HOME="$CONF_STATE_DIR/a/data" \
   mx-agent workspace grant --room "$A_ROOM" --user "$B_MXID" || die "A failed to grant B agent power in $A_ROOM"

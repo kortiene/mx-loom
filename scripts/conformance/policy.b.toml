@@ -1,40 +1,34 @@
 # Receiver-side policy fixture for daemon B (conformance Tier 2, T007 / #7).
 #
-# REWRITTEN to the REAL mx-agent v0.2.1 policy schema
-# (`crates/mx-agent-policy/src/file.rs`): the top-level table is
-# `[execution]` + `[rooms."<room>"]`, and authorization is room- and
-# sender-agent-scoped. The previous `default = "deny"` + `[[allow]]` shape was an
-# ASSUMED surface; every v0.2.1 policy struct is `deny_unknown_fields`, so that
-# shape parses as malformed → the daemon loads no policy → silent deny-all (the
-# Tier 2 POSITIVE case would then falsely fail). See the live-run findings in
-# scripts/conformance/k8s/README.md.
+# Real mx-agent policy schema (`crates/mx-agent-policy/src/file.rs`): the top-level
+# table is `[execution]` + `[rooms."<room>"]`, room- and sender-scoped. Every policy
+# struct is `deny_unknown_fields`, so any stray key makes the whole policy malformed
+# → silent deny-all (the Tier 2 POSITIVE case would then falsely fail).
 #
 # Substituted by bootstrap-daemon-b.sh:
-#   @@ROOM@@         daemon A's workspace room id (starts with '!')
-#   @@SENDER_AGENT@@ daemon A's *agent id* — the value the daemon stamps as
-#                    CallRequest.requesting_agent and that the receiver policy
-#                    engine looks up via `room.agents.get(requesting_agent)`
-#                    (call.rs → evaluate_call → lookup).
-#   @@ALLOW_TOOL@@   the one named tool B publishes AND this policy authorizes.
+#   @@ROOM@@        daemon A's workspace room id (starts with '!')
+#   @@SENDER_USER@@ daemon A's *Matrix user id* (`@localpart:server`) — the key the
+#                   receiver policy engine looks the agent rule up by, as of
+#                   mx-agent v0.2.2 / kortiene/mx-agent#366: `policy_identity`
+#                   resolves the requester's `matrix_user_id` from the signed agent
+#                   state and keys `room.agents.get(<matrix_user_id>)` on it (the
+#                   wire `requesting_agent` stays the derived agent id; trust is
+#                   still scoped to that agent id). On v0.2.1 this path was a dead
+#                   end (enforcement keyed on agent_id, validation required `@user`)
+#                   — see kortiene/mx-agent#366 / scripts/conformance/k8s/README.md.
+#   @@ALLOW_TOOL@@  the one named tool B publishes AND this policy authorizes.
 #
 # @@DENY_TOOL@@ is deliberately ABSENT: any tool not in `allow_tools` falls
 # through to deny-by-default, so the policy-denied negative case is a REAL
 # `ToolNotAllowed` enforcement decision, not a missing registration.
-#
-# NB (v0.2.1 divergence surfaced live): policy *validation* requires every agent
-# key to start with '@' (a Matrix user id), but the call-authorization path looks
-# the agent up by *agent id* (no '@'). The two key namespaces are inconsistent in
-# v0.2.1, so a named-tool `call` cannot be both loadable and matchable — see the
-# k8s README findings. This fixture keys on the agent id (the enforcement key);
-# whether it loads is exactly what the live run characterizes.
 
 [rooms."@@ROOM@@"]
 # Room trust gate (consulted for raw exec; harmless for the named-tool call path).
 trusted = true
 
-# The single allowed named tool for daemon A's agent. No approval gate — the
-# approval round-trip is M1 / T114 (policy.golden.toml). Deny-by-default: every
-# tool not listed here (incl. the deny tool) is refused with `ToolNotAllowed`.
-[rooms."@@ROOM@@".agents."@@SENDER_AGENT@@"]
+# The single allowed named tool for daemon A. Keyed on A's Matrix user id (#366).
+# No approval gate — the approval round-trip is M1 / T114 (policy.golden.toml).
+# Deny-by-default: every tool not listed (incl. the deny tool) → `ToolNotAllowed`.
+[rooms."@@ROOM@@".agents."@@SENDER_USER@@"]
 allow_tools = ["@@ALLOW_TOOL@@"]
 requires_approval = false

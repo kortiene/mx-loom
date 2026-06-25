@@ -78,7 +78,12 @@ A_REG_JSON="$(mx-agent agent register --room "$A_ROOM" --kind generic --json)" \
 A_AGENT="$(printf '%s' "$A_REG_JSON" | sed -n 's/.*"agent_id"[: ]*"\([^"]*\)".*/\1/p')"
 [ -n "$A_AGENT" ] || die "could not parse A's agent_id from agent.register output"
 
+# A's Matrix user id — daemon B's receiver policy is keyed on it as of mx-agent
+# v0.2.2 (kortiene/mx-agent#366); trust stays scoped to `sender_agent` (the agent id).
+A_USER_ID="@${A_USER}:${MXL_SERVER_NAME:-golden.local}"
+
 emit_output socket "$A_SOCKET"
 emit_output room "$A_ROOM"
 emit_output sender_agent "$A_AGENT"
-log "daemon A ready — socket=$A_SOCKET room=$A_ROOM sender_agent=$A_AGENT"
+emit_output sender_user "$A_USER_ID"
+log "daemon A ready — socket=$A_SOCKET room=$A_ROOM sender_agent=$A_AGENT sender_user=$A_USER_ID"

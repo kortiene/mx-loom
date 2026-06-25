@@ -702,14 +702,12 @@ describe.skipIf(SKIP_TASK_LIVE)(
         if (!client) throw new Error('live MCP client not initialised');
 
         // -----------------------------------------------------------------------
-        // Step 1: Create task A (no deps) → ok + a returned task_id.
-        // A live create IS a signed com.mxagent.task.v1 mutation, but v0.2.1's
-        // task.create reply carries NO audit anchor: no event_id/request_id, and
-        // invocation_id is the linked ACTION invocation — null for a planning task
-        // (create authors; dispatch is T303). So audit_ref is empty here. PINNED by
-        // the live two-daemon round-trip; re-strengthen to a populated anchor once
-        // the daemon returns the emitted event_id (kortiene/mx-agent#367). The proof
-        // the signed mutation landed is the returned task_id, asserted below.
+        // Step 1: Create task A (no deps) → ok + populated audit anchor.
+        // A live create is a signed com.mxagent.task.v1 mutation; as of mx-agent
+        // v0.2.2 (kortiene/mx-agent#367) the reply carries the emitted event id as
+        // its audit anchor → audit_ref.event_id is populated. invocation_id stays
+        // null: that field is the linked ACTION invocation, and a planning task
+        // dispatches nothing (create authors; dispatch is T303).
         // -----------------------------------------------------------------------
         const aRaw = (await client.callTool({
           name: 'mx_create_task',
@@ -722,10 +720,11 @@ describe.skipIf(SKIP_TASK_LIVE)(
 
         expect(validateEnvelope(aEnv), 'task A: envelope must validate').toBe(true);
         expect(aEnv.status, 'task A: status must be ok').toBe('ok');
-        // v0.2.1: the create reply carries no audit anchor (kortiene/mx-agent#367) →
-        // audit_ref is empty. validateEnvelope (above) already checks its shape; the
-        // populated-anchor assertion returns once the daemon surfaces the event id.
-        expect(aEnv.audit_ref.invocation_id, 'task A: v0.2.1 create reply has no invocation_id').toBeNull();
+        // v0.2.2: the create reply surfaces the emitted event id as the audit anchor
+        // (kortiene/mx-agent#367) → audit_ref.event_id populated; invocation_id null
+        // (no dispatched action for a planning task).
+        expect(aEnv.audit_ref.event_id, 'task A: v0.2.2 create reply carries the emitted event_id anchor (#367)').toBeTruthy();
+        expect(aEnv.audit_ref.invocation_id, 'task A: planning task has no linked action invocation').toBeNull();
         expect(JSON.stringify(aRaw)).not.toMatch(SECRET_PATTERN);
 
         const aId = (aEnv.result as Record<string, unknown>).task_id as string;
@@ -746,9 +745,9 @@ describe.skipIf(SKIP_TASK_LIVE)(
 
         expect(validateEnvelope(bEnv), 'task B: envelope must validate').toBe(true);
         expect(bEnv.status, 'task B: status must be ok').toBe('ok');
-        // v0.2.1: no audit anchor in the create reply (see task A; kortiene/mx-agent#367).
-        // The returned task_id (below) is the proof the signed mutation landed.
-        expect(bEnv.audit_ref.invocation_id, 'task B: v0.2.1 create reply has no invocation_id').toBeNull();
+        // v0.2.2: create reply carries the emitted event_id anchor (kortiene/mx-agent#367).
+        expect(bEnv.audit_ref.event_id, 'task B: v0.2.2 create reply carries the emitted event_id anchor (#367)').toBeTruthy();
+        expect(bEnv.audit_ref.invocation_id, 'task B: planning task has no linked action invocation').toBeNull();
         expect(JSON.stringify(bRaw)).not.toMatch(SECRET_PATTERN);
 
         const bId = (bEnv.result as Record<string, unknown>).task_id as string;
@@ -795,9 +794,9 @@ describe.skipIf(SKIP_TASK_LIVE)(
 
         // -----------------------------------------------------------------------
         // Step 4: update B (state: executing) → ok; "update transitions state" —
-        // the other half of issue #30 AC. Like create, v0.2.1's task.update reply
-        // carries no audit anchor (kortiene/mx-agent#367); the transition itself
-        // (and its persistence in step 5) is the AC, not a populated invocation_id.
+        // the other half of issue #30 AC. Like create, v0.2.2's task.update reply
+        // carries the emitted event_id as the audit anchor (kortiene/mx-agent#367);
+        // invocation_id stays null (no dispatched action).
         // -----------------------------------------------------------------------
         const updateRaw = (await client.callTool({
           name: 'mx_update_task',
@@ -811,8 +810,9 @@ describe.skipIf(SKIP_TASK_LIVE)(
 
         expect(validateEnvelope(updateEnv), 'update: envelope must validate').toBe(true);
         expect(updateEnv.status, 'update: status must be ok').toBe('ok');
-        // v0.2.1: no audit anchor in the update reply (kortiene/mx-agent#367).
-        expect(updateEnv.audit_ref.invocation_id, 'update: v0.2.1 reply has no invocation_id').toBeNull();
+        // v0.2.2: the update reply carries the emitted event_id anchor (kortiene/mx-agent#367).
+        expect(updateEnv.audit_ref.event_id, 'update: v0.2.2 reply carries the emitted event_id anchor (#367)').toBeTruthy();
+        expect(updateEnv.audit_ref.invocation_id, 'update: state-only transition has no linked action invocation').toBeNull();
         expect(JSON.stringify(updateRaw)).not.toMatch(SECRET_PATTERN);
 
         const updNode = updateEnv.result as Record<string, unknown>;

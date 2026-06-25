@@ -6,14 +6,17 @@
 # compromised or hallucinating model can only emit a signed *request*; it cannot
 # widen this policy (design §1, §6 L3).
 #
-# SCHEMA — pinned against mx-agent v0.2.1 source (crates/mx-agent-policy/src/file.rs):
-# an [execution] block plus per-room, per-SENDER-AGENT [rooms.*.agents.*] blocks.
-# Every struct is #[serde(deny_unknown_fields)], so ANY stray key makes the whole
-# policy malformed → silent deny-all. Authorization resolves
-# `room.agents.get(<sender agent id>)` (engine.rs) and exact-matches the requested
-# tool against `allow_tools`. The daemon reads policy.toml from MX_AGENT_CONFIG_DIR
-# (resolved at the FIRST `daemon start`) — bootstrap-daemon-b.sh substitutes the
-# @@…@@ coordinates and writes it there *before* starting daemon B.
+# SCHEMA — mx-agent v0.2.2 source (crates/mx-agent-policy/src/file.rs): an
+# [execution] block plus per-room, per-SENDER [rooms.*.agents.*] blocks. Every
+# struct is #[serde(deny_unknown_fields)], so ANY stray key makes the whole policy
+# malformed → silent deny-all. As of v0.2.2 (kortiene/mx-agent#366) authorization
+# resolves `room.agents.get(<sender Matrix user id>)` — `policy_identity` keys the
+# rule on the requester's `matrix_user_id` (the `@user:server` namespace the parser
+# already required), NOT the wire `requesting_agent` derived agent id — and
+# exact-matches the requested tool against `allow_tools`. The daemon reads
+# policy.toml from MX_AGENT_CONFIG_DIR (resolved at the FIRST `daemon start`) —
+# bootstrap-daemon-b.sh substitutes the @@…@@ coordinates and writes it there
+# *before* starting daemon B.
 #
 # APPROVAL CAVEAT (see issue #73): v0.2.1 `requires_approval` is PER-AGENT (a single
 # bool on the agent rule), NOT per-tool. The golden scenario assumes per-tool
@@ -37,9 +40,9 @@ require_sandbox = true                   # never run a guarded command unsandbox
 [rooms."@@ROOM@@"]
 trusted = true                           # the workspace room is an authorized boundary
 
-# What daemon A (the delegator/sender) may ask daemon B to run. Keyed on A's agent
-# id — the bring-up emits it as `sender_agent`; trust is scoped to the same id.
-[rooms."@@ROOM@@".agents."@@SENDER_AGENT@@"]
+# What daemon A (the delegator/sender) may ask daemon B to run. Keyed on A's Matrix
+# user id (v0.2.2 / #366); trust is still scoped to A's agent id (`sender_agent`).
+[rooms."@@ROOM@@".agents."@@SENDER_USER@@"]
 allow_tools = ["@@ALLOW_TOOL@@", "@@APPROVAL_TOOL@@"]  # named tools (mx_delegate_tool / call.start)
 allow_exec = true                        # permit the guarded-exec path for this agent
 allow_commands = ["@@ALLOW_COMMAND@@"]   # the one allowlisted binary (e.g. echo)
