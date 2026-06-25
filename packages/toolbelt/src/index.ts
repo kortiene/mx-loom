@@ -63,3 +63,44 @@ export { startHeartbeat } from './heartbeat.js';
 export type { HeartbeatHandle, HeartbeatOptions, HeartbeatSchedule } from './heartbeat.js';
 export { newCorrelationId, withCorrelationParam, CORRELATION_PARAM_KEY } from './correlation.js';
 export type { AgentState, AgentListEntry, AgentLiveness } from './agent-state.js';
+
+// Crash-recovery resumption (T302) — re-establish a session + reconstruct the durable
+// plan from task state after a runtime restart, and subscribe to the task stream.
+// All shapes are non-secret coordination handles; nothing here crosses Boundary A.
+export {
+  SESSION_DESCRIPTOR_VERSION,
+  assertSessionDescriptor,
+  serializeSessionDescriptor,
+  parseSessionDescriptor,
+} from './session-descriptor.js';
+export type { SessionDescriptor, TaskCursor } from './session-descriptor.js';
+export {
+  TASK_LIST_METHOD,
+  mapResumedTaskState,
+  projectResumedTask,
+  readTaskRev,
+  readTaskRows,
+  advanceCursor,
+  deriveEdges,
+  reconcile,
+  buildPlanSnapshot,
+  reconstructPlan,
+} from './plan-snapshot.js';
+export type {
+  ResumedTask,
+  ResumedTaskState,
+  PlanEdge,
+  PlanReconciliation,
+  PlanSnapshot,
+  DaemonCall,
+} from './plan-snapshot.js';
+export { resumeSession } from './resume.js';
+export type { ResumeOptions, ResumedSession } from './resume.js';
+export {
+  watchTasks,
+  TASK_WATCH_METHOD,
+  MIN_WATCH_INTERVAL_MS,
+  MAX_WATCH_INTERVAL_MS,
+  DEFAULT_WATCH_INTERVAL_MS,
+} from './task-watch.js';
+export type { TaskWatcher, TaskDelta, WatchOptions } from './task-watch.js';

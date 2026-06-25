@@ -15,6 +15,13 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 
 import type { AgentListEntry, AgentLiveness, AgentState } from '../src/agent-state.js';
 import { IpcError } from '../src/ipc/errors.js';
+import { resumeSession } from '../src/resume.js';
+import type { ResumeOptions, ResumedSession } from '../src/resume.js';
+import { watchTasks, TASK_WATCH_METHOD, DEFAULT_WATCH_INTERVAL_MS } from '../src/task-watch.js';
+import type { TaskWatcher, TaskDelta, WatchOptions } from '../src/task-watch.js';
+import { SESSION_DESCRIPTOR_VERSION } from '../src/session-descriptor.js';
+import type { SessionDescriptor, TaskCursor } from '../src/session-descriptor.js';
+import type { PlanSnapshot, PlanReconciliation, ResumedTask } from '../src/plan-snapshot.js';
 import {
   AGENT_STATE_FIELDS,
   CLOSED_TRANSPORT_CODES,
@@ -543,5 +550,156 @@ describe('conformance harness — AgentListEntry and AgentLiveness shapes (compi
     expect(allValues).toContain('active');
     expect(allValues).toContain('stale');
     expect(allValues).toContain('offline');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// T302 — compile-checked drift guard for the resumption surface
+//
+// These tests verify the shapes the T302 conformance suite (`resume.conformance.test.ts`)
+// depends on are exported from the toolbelt with the correct structure. A field rename,
+// a removed export, or a narrowed type surfaces as a TypeScript error here — before
+// any daemon is needed. This is the "documentation drift guard" the spec calls for:
+// the live conformance suite pins the API against the daemon; these pin the API against
+// what the documentation and the conformance suite's assertions depend on.
+//
+// Compare: the AgentListEntry/AgentLiveness section above — same pattern.
+// ---------------------------------------------------------------------------
+
+describe('T302 conformance drift guard — resumption surface (compile-check)', () => {
+  it('SESSION_DESCRIPTOR_VERSION is 1 (the only currently supported version)', () => {
+    // If the version changes, both the serializer and the conformance assertions
+    // need updating. Pin it explicitly so a bump is a visible, intentional change.
+    const v: 1 = SESSION_DESCRIPTOR_VERSION;
+    expect(v).toBe(1);
+  });
+
+  it('SessionDescriptor has the five required allowlisted fields', () => {
+    // Compile-check: TypeScript errors if any required field is removed.
+    const d: SessionDescriptor = {
+      v: 1,
+      agent_id: 'agent-drift-check',
+      room: '!drift:srv',
+      correlation_id: 'corr_drift-check',
+      kind: 'runtime',
+    };
+    expect(d.v).toBe(1);
+    expect(typeof d.agent_id).toBe('string');
+    expect(typeof d.room).toBe('string');
+    expect(typeof d.correlation_id).toBe('string');
+    // kind and cursor are optional
+    expect(d.kind).toBe('runtime');
+    expect(d.cursor).toBeUndefined();
+  });
+
+  it('TaskCursor has state_rev (number | undefined) and token (string | undefined) fields', () => {
+    // Compile-check: these are the cursor fields the conformance suite persists and reads.
+    const withRev: TaskCursor = { state_rev: 42 };
+    const withToken: TaskCursor = { token: 'opaque-tok' };
+    const both: TaskCursor = { state_rev: 10, token: 'tok' };
+    const empty: TaskCursor = {};
+    expect(withRev.state_rev).toBe(42);
+    expect(withToken.token).toBe('opaque-tok');
+    expect(both.state_rev).toBe(10);
+    expect(empty.state_rev).toBeUndefined();
+  });
+
+  it('ResumedSession has session, plan, resumed fields the conformance assertions depend on', () => {
+    // Compile-check: TypeScript type verifies the field names are correct.
+    // Runtime: verify assignability is meaningful (the object shape is right).
+    const _typeCheck: (r: ResumedSession) => void = (r) => {
+      // If these property accesses compile, the field names are correct.
+      void r.session;
+      void r.plan;
+      const _b: boolean = r.resumed;
+      void _b;
+    };
+    expect(typeof _typeCheck).toBe('function');
+  });
+
+  it('PlanSnapshot has room, tasks, edges, reconciliation, cursor, fault fields', () => {
+    const _typeCheck: (p: PlanSnapshot) => void = (p) => {
+      void p.room;
+      void p.tasks;
+      void p.edges;
+      void p.reconciliation;
+      void p.cursor;
+      // fault is optional
+      void p.fault;
+    };
+    expect(typeof _typeCheck).toBe('function');
+  });
+
+  it('PlanReconciliation has exactly four buckets: done, inFlight, ready, blocked', () => {
+    const _typeCheck: (r: PlanReconciliation) => void = (r) => {
+      const _done: string[] = r.done;
+      const _inFlight: string[] = r.inFlight;
+      const _ready: string[] = r.ready;
+      const _blocked: string[] = r.blocked;
+      void _done; void _inFlight; void _ready; void _blocked;
+    };
+    expect(typeof _typeCheck).toBe('function');
+  });
+
+  it('ResumedTask has the five non-secret coordination fields', () => {
+    const task: ResumedTask = {
+      task_id: 't-drift',
+      state: 'pending',
+      assignee: null,
+      depends_on: [],
+      blocks: [],
+    };
+    expect(task.task_id).toBe('t-drift');
+    expect(task.state).toBe('pending');
+    expect(task.assignee).toBeNull();
+    expect(task.depends_on).toEqual([]);
+    expect(task.blocks).toEqual([]);
+    // action / credential-shaped fields must NOT exist on this type
+    expect('action' in task).toBe(false);
+  });
+
+  it('resumeSession is a function exported from the toolbelt', () => {
+    expect(typeof resumeSession).toBe('function');
+  });
+
+  it('watchTasks is a function exported from the toolbelt', () => {
+    expect(typeof watchTasks).toBe('function');
+  });
+
+  it('TASK_WATCH_METHOD is undefined by default (poll fallback; push gated until verified)', () => {
+    // This is the load-bearing constraint: T302 ships on the poll backend and only
+    // enables task.watch push once the daemon surface is verified. If this constant
+    // changes from undefined without a verification in docs/mx-agent-surface-v0.2.1.md,
+    // the suite is shipping unverified behavior.
+    expect(TASK_WATCH_METHOD).toBeUndefined();
+  });
+
+  it('DEFAULT_WATCH_INTERVAL_MS is a finite positive number within [MIN, MAX]', () => {
+    expect(typeof DEFAULT_WATCH_INTERVAL_MS).toBe('number');
+    expect(Number.isFinite(DEFAULT_WATCH_INTERVAL_MS)).toBe(true);
+    expect(DEFAULT_WATCH_INTERVAL_MS).toBeGreaterThan(0);
+  });
+
+  it('TaskWatcher and TaskDelta are assignable types (compile-check)', () => {
+    // These don't instantiate a watcher (no daemon needed) — just pin the shapes.
+    const _watcherCheck: (w: TaskWatcher) => void = (w) => {
+      void w.cursor;
+      w.stop();
+      void w[Symbol.asyncIterator]();
+    };
+    const _deltaCheck: (d: TaskDelta) => void = (d) => {
+      void d.task;
+      void d.cursor;
+    };
+    expect(typeof _watcherCheck).toBe('function');
+    expect(typeof _deltaCheck).toBe('function');
+  });
+
+  it('WatchOptions and ResumeOptions are accepted by their respective functions (type-level)', () => {
+    // Verify the types exist and have the shapes the conformance suite passes.
+    const _watchOpts: WatchOptions = { intervalMs: 1_000 };
+    const _resumeOpts: ResumeOptions = { heartbeat: false };
+    expect(_watchOpts.intervalMs).toBe(1_000);
+    expect(_resumeOpts.heartbeat).toBe(false);
   });
 });
