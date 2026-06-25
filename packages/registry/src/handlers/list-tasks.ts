@@ -27,7 +27,6 @@ import type { RoomScopedDeps } from './deps.js';
 import { EMPTY_AUDIT_REF, faultToResult } from './handler-fault.js';
 import {
   deriveEdges,
-  mergeEdges,
   projectTaskNode,
   type TaskEdge,
   type TaskNode,
@@ -36,7 +35,6 @@ import {
 
 /** Localised so the two-daemon round-trip corrects the wire in one place. */
 const TASK_LIST_METHOD = 'task.list';
-const TASK_GRAPH_METHOD = 'task.graph'; // edges, when view === 'graph'
 
 /** Input of `mx_list_tasks` — optional filters + the view selector. */
 export interface ListTasksInput {
@@ -66,16 +64,6 @@ function readTaskRows(raw: unknown): unknown[] {
   return [];
 }
 
-/** Extract the explicit edge rows from a `task.graph` reply (`edges` / `links`, or a
- *  bare array). A non-array → `undefined` (no explicit edges to merge). */
-function readEdgeRows(raw: unknown): unknown {
-  if (Array.isArray(raw)) return raw;
-  const r = asRecord(raw);
-  if (r === undefined) return undefined;
-  if (Array.isArray(r.edges)) return r.edges;
-  if (Array.isArray(r.links)) return r.links;
-  return undefined;
-}
 
 /**
  * List the shared plan and return the normalized {@link ToolResult}. Never throws —
@@ -90,7 +78,9 @@ export async function mxListTasks(input: ListTasksInput, deps: RoomScopedDeps): 
   const filters: Record<string, unknown> = {
     ...(deps.room !== undefined && deps.room !== '' ? { room: deps.room } : {}),
     ...(input.state !== undefined ? { state: input.state } : {}),
-    ...(input.assignee !== undefined ? { assignee: input.assignee } : {}),
+    // Daemon `ListTasksOptions` filter field is `assigned_to` (not `assignee`); pinned
+    // by the live round-trip (a wrong name is silently ignored → unfiltered results).
+    ...(input.assignee !== undefined ? { assigned_to: input.assignee } : {}),
   };
   const listParams = Object.keys(filters).length > 0 ? filters : undefined;
 
@@ -109,17 +99,14 @@ export async function mxListTasks(input: ListTasksInput, deps: RoomScopedDeps): 
     return ok({ tasks } satisfies ListTasksResult, EMPTY_AUDIT_REF);
   }
 
-  // 3. view: 'graph' → derive edges from the node records (so the DAG is reflected
-  //    from `task.list` alone), then merge any explicit `task.graph` edges. A
-  //    `task.graph` fault is tolerated — the derived edges still reflect the DAG.
-  const derived = deriveEdges(tasks);
-  let graphResponse: unknown;
-  try {
-    graphResponse = await deps.daemon.call(TASK_GRAPH_METHOD, listParams);
-  } catch {
-    graphResponse = undefined;
-  }
-  const edges: TaskEdge[] = mergeEdges(derived, readEdgeRows(graphResponse));
+  // 3. view: 'graph' → derive the edge set from each node's depends_on/blocks.
+  //    task.list already returns those per node, so the DAG is fully recoverable
+  //    from task.list ALONE (spec Risk #1). We deliberately do NOT call task.graph:
+  //    on v0.2.1 it hangs (kortiene/mx-agent#368), and because the IPC client
+  //    multiplexes over ONE persistent connection, a hung task.graph poisons every
+  //    subsequent call (a following task.update times out). Deriving from the nodes
+  //    is both sufficient (verified by the live round-trip) and safe.
+  const edges: TaskEdge[] = deriveEdges(tasks);
 
   return ok({ tasks, edges } satisfies ListTasksResult, EMPTY_AUDIT_REF);
 }

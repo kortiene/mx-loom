@@ -1,21 +1,40 @@
-# Minimal receiver-side policy fixture for daemon B (conformance Tier 2, T007 / #7).
+# Receiver-side policy fixture for daemon B (conformance Tier 2, T007 / #7).
 #
-# Throwaway, scoped to the conformance bring-up ONLY. The canonical golden-test
-# policy is T112 (M1) — converge on it later (see the spec's Risks #5). The shape
-# below is deny-by-default: B authorizes exactly the one allowed tool and nothing
-# else, so the policy-denied negative case (a call.start to @@DENY_TOOL@@) is a
-# REAL enforcement decision, not a missing registration.
+# REWRITTEN to the REAL mx-agent v0.2.1 policy schema
+# (`crates/mx-agent-policy/src/file.rs`): the top-level table is
+# `[execution]` + `[rooms."<room>"]`, and authorization is room- and
+# sender-agent-scoped. The previous `default = "deny"` + `[[allow]]` shape was an
+# ASSUMED surface; every v0.2.1 policy struct is `deny_unknown_fields`, so that
+# shape parses as malformed → the daemon loads no policy → silent deny-all (the
+# Tier 2 POSITIVE case would then falsely fail). See the live-run findings in
+# scripts/conformance/k8s/README.md.
 #
-# `@@ALLOW_TOOL@@` / `@@DENY_TOOL@@` are substituted by bootstrap-daemon-b.sh.
+# Substituted by bootstrap-daemon-b.sh:
+#   @@ROOM@@         daemon A's workspace room id (starts with '!')
+#   @@SENDER_AGENT@@ daemon A's *agent id* — the value the daemon stamps as
+#                    CallRequest.requesting_agent and that the receiver policy
+#                    engine looks up via `room.agents.get(requesting_agent)`
+#                    (call.rs → evaluate_call → lookup).
+#   @@ALLOW_TOOL@@   the one named tool B publishes AND this policy authorizes.
+#
+# @@DENY_TOOL@@ is deliberately ABSENT: any tool not in `allow_tools` falls
+# through to deny-by-default, so the policy-denied negative case is a REAL
+# `ToolNotAllowed` enforcement decision, not a missing registration.
+#
+# NB (v0.2.1 divergence surfaced live): policy *validation* requires every agent
+# key to start with '@' (a Matrix user id), but the call-authorization path looks
+# the agent up by *agent id* (no '@'). The two key namespaces are inconsistent in
+# v0.2.1, so a named-tool `call` cannot be both loadable and matchable — see the
+# k8s README findings. This fixture keys on the agent id (the enforcement key);
+# whether it loads is exactly what the live run characterizes.
 
-# Deny-by-default: no tool is callable unless an allow rule matches.
-default = "deny"
+[rooms."@@ROOM@@"]
+# Room trust gate (consulted for raw exec; harmless for the named-tool call path).
+trusted = true
 
-# The single allowed named tool. No approval gate (the approval round-trip is
-# M1 / T114) — Tier 2 exercises a non-approval-gated tool.
-[[allow]]
-tool = "@@ALLOW_TOOL@@"
+# The single allowed named tool for daemon A's agent. No approval gate — the
+# approval round-trip is M1 / T114 (policy.golden.toml). Deny-by-default: every
+# tool not listed here (incl. the deny tool) is refused with `ToolNotAllowed`.
+[rooms."@@ROOM@@".agents."@@SENDER_AGENT@@"]
+allow_tools = ["@@ALLOW_TOOL@@"]
 requires_approval = false
-
-# @@DENY_TOOL@@ is intentionally NOT listed — it falls through to `default = deny`,
-# which is what the Tier 2 policy-denied assertion verifies.

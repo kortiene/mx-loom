@@ -113,12 +113,22 @@ export async function mxCreateTask(input: CreateTaskInput, deps: RoomScopedDeps)
   // `MxClient.withRetry`'s verbatim param reuse keeps it stable across transport
   // retries (T102 §4.4); the handler never regenerates it.
   const idempotency_key = input.idempotency_key ?? newIdempotencyKey();
+  // Wire shape PINNED by the live v0.2.1 round-trip (was authored against assumed
+  // names). The daemon's `CreateTaskOptions` (mx-agent-daemon task.rs) has NO serde
+  // default on `description` / `assigned_to` / `depends_on` / `blocks`, so all four
+  // are REQUIRED — omitting `description` returns `-32602 missing field description`.
+  // Send them unconditionally; `description` has no model input (not in the
+  // descriptor) → "". The daemon's field is `assigned_to` (NOT `assign`); the verb's
+  // model-facing input stays `assign`. (The struct has no `deny_unknown_fields`, so
+  // the trailing `idempotency_key` is accepted but currently IGNORED by the daemon —
+  // task.create has no server-side dedup on v0.2.1.)
   const params: Record<string, unknown> = {
     room: deps.room,
     title: input.title,
-    ...(input.depends_on !== undefined ? { depends_on: input.depends_on } : {}),
-    ...(input.blocks !== undefined ? { blocks: input.blocks } : {}),
-    ...(input.assign !== undefined ? { assign: input.assign } : {}),
+    description: '',
+    assigned_to: input.assign ?? '',
+    depends_on: input.depends_on ?? [],
+    blocks: input.blocks ?? [],
     ...(input.state !== undefined ? { state: input.state } : {}),
     ...(input.action !== undefined ? { action: buildActionParam(input.action) } : {}),
     idempotency_key,

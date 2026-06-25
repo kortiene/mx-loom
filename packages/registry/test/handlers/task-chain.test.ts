@@ -63,7 +63,7 @@ function makeStatefulDaemon(): {
           task_id,
           title: p['title'] ?? '',
           state: p['state'] ?? 'proposed',
-          assignee: p['assign'] ?? null,
+          assignee: p['assigned_to'] ?? null,
           depends_on: p['depends_on'] ?? [],
           blocks: p['blocks'] ?? [],
           action: p['action'] ?? null,
@@ -90,7 +90,7 @@ function makeStatefulDaemon(): {
         const updated: Record<string, unknown> = {
           ...existing,
           ...(p['state'] !== undefined ? { state: p['state'] } : {}),
-          ...(p['assign'] !== undefined ? { assignee: p['assign'] } : {}),
+          ...(p['assigned_to'] !== undefined ? { assignee: p['assigned_to'] } : {}),
           ...(p['depends_on'] !== undefined ? { depends_on: p['depends_on'] } : {}),
           ...(p['blocks'] !== undefined ? { blocks: p['blocks'] } : {}),
           updated_at: '2026-01-02T00:00:00Z',
@@ -108,7 +108,7 @@ function makeStatefulDaemon(): {
       if (method === 'task.list') {
         const tasks = [...taskStore.values()];
         const stateFilter = typeof p['state'] === 'string' ? p['state'] : undefined;
-        const assigneeFilter = typeof p['assignee'] === 'string' ? p['assignee'] : undefined;
+        const assigneeFilter = typeof p['assigned_to'] === 'string' ? p['assigned_to'] : undefined;
         const filtered = tasks.filter((t) => {
           if (stateFilter !== undefined && t['state'] !== stateFilter) return false;
           if (assigneeFilter !== undefined && t['assignee'] !== assigneeFilter) return false;
