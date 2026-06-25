@@ -905,6 +905,87 @@ describe('session diagnostics — redaction', () => {
 });
 
 // ---------------------------------------------------------------------------
+// session.describe() — mint a non-secret SessionDescriptor (T302)
+// ---------------------------------------------------------------------------
+
+describe('session.describe', () => {
+  it('returns a SessionDescriptor with agent_id, room, and correlationId', async () => {
+    const client = new FakeClient().whenMethod('agent.register', { result: FAKE_AGENT_STATE });
+    const session = await openSession({
+      client: asClient(client),
+      heartbeat: false,
+      room: '!myroom:server',
+    });
+    const desc = session.describe();
+    expect(desc.v).toBe(1);
+    expect(desc.agent_id).toBe(FAKE_AGENT_STATE.agent_id);
+    expect(desc.room).toBe('!myroom:server');
+    expect(desc.correlation_id).toBe(session.correlationId);
+  });
+
+  it('throws when the session has no room (the resumption key)', async () => {
+    const client = new FakeClient().whenMethod('agent.register', { result: FAKE_AGENT_STATE });
+    const session = await openSession({ client: asClient(client), heartbeat: false });
+    expect(() => session.describe()).toThrow(/room/);
+  });
+
+  it('includes kind from agentState when set to a non-empty string', async () => {
+    const stateWithKind = { ...FAKE_AGENT_STATE, kind: 'test-runtime' };
+    const client = new FakeClient().whenMethod('agent.register', { result: stateWithKind });
+    const session = await openSession({ client: asClient(client), heartbeat: false, room: '!r:srv' });
+    expect(session.describe().kind).toBe('test-runtime');
+  });
+
+  it('omits kind from the descriptor when agentState.kind is an empty string', async () => {
+    const stateNoKind = { ...FAKE_AGENT_STATE, kind: '' };
+    const client = new FakeClient().whenMethod('agent.register', { result: stateNoKind });
+    const session = await openSession({ client: asClient(client), heartbeat: false, room: '!r:srv' });
+    expect(session.describe().kind).toBeUndefined();
+  });
+
+  it('includes a provided cursor in the descriptor (state_rev only — see cursor.token note)', async () => {
+    const client = new FakeClient().whenMethod('agent.register', { result: FAKE_AGENT_STATE });
+    const session = await openSession({ client: asClient(client), heartbeat: false, room: '!r:srv' });
+    // cursor.token is blocked by the credential guard (field name 'token' matches CREDENTIAL_KEY_RE)
+    const cursor = { state_rev: 42 };
+    const desc = session.describe(cursor);
+    expect(desc.cursor).toEqual(cursor);
+  });
+
+  it('omits cursor when none is provided', async () => {
+    const client = new FakeClient().whenMethod('agent.register', { result: FAKE_AGENT_STATE });
+    const session = await openSession({ client: asClient(client), heartbeat: false, room: '!r:srv' });
+    expect(session.describe().cursor).toBeUndefined();
+  });
+
+  it('uses the pre-supplied correlationId as the descriptor correlation_id', async () => {
+    const client = new FakeClient().whenMethod('agent.register', { result: FAKE_AGENT_STATE });
+    const session = await openSession({
+      client: asClient(client),
+      heartbeat: false,
+      room: '!r:srv',
+      correlationId: 'corr_preset-xyz',
+    });
+    expect(session.describe().correlation_id).toBe('corr_preset-xyz');
+  });
+
+  it('the returned descriptor passes the non-secret guard (allowlist-by-construction)', async () => {
+    const client = new FakeClient().whenMethod('agent.register', { result: FAKE_AGENT_STATE });
+    const session = await openSession({
+      client: asClient(client),
+      heartbeat: false,
+      room: '!r:srv',
+    });
+    const desc = session.describe();
+    // Must only have the named, non-secret fields
+    const keys = Object.keys(desc);
+    for (const key of keys) {
+      expect(['v', 'agent_id', 'room', 'correlation_id', 'kind', 'cursor']).toContain(key);
+    }
+  });
+});
+
+// ---------------------------------------------------------------------------
 // Compile-checked usage snippet
 // ---------------------------------------------------------------------------
 

@@ -17,7 +17,7 @@ import { NullAuditSink, InMemoryAuditSink } from '@mx-loom/audit';
 import type { AuditSink } from '@mx-loom/audit';
 import type { DaemonCall } from '@mx-loom/registry';
 import type { AgentLiveness, AgentState } from '@mx-loom/toolbelt';
-import type { MxSession, SessionState } from '@mx-loom/toolbelt';
+import type { MxSession, SessionDescriptor, SessionState, TaskCursor } from '@mx-loom/toolbelt';
 
 import { createPiBindingContext } from '../src/context.js';
 import { ROOM, makeFakeDaemon } from './helpers.js';
@@ -32,6 +32,8 @@ function makeFakeSession(overrides?: {
 }): MxSession & { closeCalled: boolean } {
   let closeCalled = false;
   const daemon = makeFakeDaemon();
+  const room = overrides?.room ?? '!session-room:server';
+  const correlationId = overrides?.correlationId ?? 'corr-session-test-abc';
   const agentState: AgentState = {
     agent_id: 'agent-ctx-test',
     kind: 'test',
@@ -50,8 +52,8 @@ function makeFakeSession(overrides?: {
   const session = {
     agentId: 'agent-ctx-test',
     agentState,
-    room: overrides?.room ?? '!session-room:server',
-    correlationId: overrides?.correlationId ?? 'corr-session-test-abc',
+    room,
+    correlationId,
     state: 'active' as SessionState,
     get closeCalled() {
       return closeCalled;
@@ -59,6 +61,15 @@ function makeFakeSession(overrides?: {
     call: daemon.call.bind(daemon),
     async liveness(): Promise<AgentLiveness> {
       return 'active';
+    },
+    describe(cursor?: TaskCursor): SessionDescriptor {
+      return {
+        v: 1,
+        agent_id: 'agent-ctx-test',
+        room,
+        correlation_id: correlationId,
+        ...(cursor !== undefined ? { cursor } : {}),
+      };
     },
     async close() {
       closeCalled = true;

@@ -44,6 +44,8 @@ import type { HeartbeatHandle, HeartbeatSchedule } from './heartbeat.js';
 import { TransportError } from './transport.js';
 import type { CallOptions } from './transport.js';
 import type { AgentLiveness, AgentState } from './agent-state.js';
+import { assertSessionDescriptor } from './session-descriptor.js';
+import type { SessionDescriptor, TaskCursor } from './session-descriptor.js';
 
 /** Session lifecycle states. */
 export type SessionState = 'opening' | 'active' | 'closing' | 'closed';
@@ -76,6 +78,14 @@ export interface MxSession {
   call(method: string, params?: unknown, options?: CallOptions): Promise<unknown>;
   /** Liveness of THIS agent as reported by `agent.list` (`active|stale|offline`), or `offline` if absent. */
   liveness(options?: CallOptions): Promise<AgentLiveness>;
+  /**
+   * Mint a **non-secret** {@link SessionDescriptor} from this live session so the host
+   * can persist it before a planned shutdown and hand it to `resumeSession` on restart
+   * (T302). Carries only `agent_id` / `room` / `correlation_id` / `kind` (+ the supplied
+   * resumption `cursor`); never any token or key. Requires a registered session with a
+   * room (the resumption key) — throws otherwise.
+   */
+  describe(cursor?: TaskCursor): SessionDescriptor;
   /** Stop the heartbeat and deregister (or let liveness decay). Idempotent. */
   close(): Promise<void>;
 }
@@ -280,6 +290,24 @@ class MxSessionImpl implements MxSession {
     if (this.#room !== undefined) listParams['room'] = this.#room;
     const list = await this.call(LIST_METHOD, listParams, options);
     return livenessFor(list, this.agentId);
+  }
+
+  describe(cursor?: TaskCursor): SessionDescriptor {
+    if (this.#agentState === null) throw new Error('session is not registered yet');
+    if (this.#room === undefined || this.#room === '') {
+      throw new Error('cannot describe a session without a room (the resumption key)');
+    }
+    // The registered kind round-trips back in AgentState; only carry it when non-empty.
+    const kind = this.#agentState.kind;
+    // Build through the validator so the result is allowlisted + provably non-secret.
+    return assertSessionDescriptor({
+      v: 1,
+      agent_id: this.#agentState.agent_id,
+      room: this.#room,
+      correlation_id: this.#correlationId,
+      ...(typeof kind === 'string' && kind !== '' ? { kind } : {}),
+      ...(cursor !== undefined ? { cursor } : {}),
+    });
   }
 
   async close(): Promise<void> {

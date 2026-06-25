@@ -159,6 +159,78 @@ every heartbeat tick, and no env surface is added. Registration is toolbelt-run
 > defaults to decay (no method); set `deregisterMethod` once a deregister RPC is
 > confirmed. Correlation param propagation defaults off.
 
+## Crash-recovery resumption (T302)
+
+The crash-recovery boundary is the **durable task DAG** (design §7). When a
+runtime dies, its *ephemeral cognition state* (scratchpad, conversation,
+retrieved knowledge) is runtime-private and **lost**; the *durable coordination
+state* — the signed task plan of record — survives on the substrate. So "a
+runtime can die and a new one resumes from task state" needs exactly one
+non-secret record to cross the restart boundary, plus a way to re-read the plan.
+
+```ts
+import { openSession, serializeSessionDescriptor, resumeSession, watchTasks } from '@mx-loom/toolbelt';
+
+// --- before a planned shutdown / crash: persist a NON-SECRET descriptor ---
+const runtimeConfig = { kind: 'runtime', maxInvocations: 10 }; // the runtime's own startup config
+const s = await openSession({ room, ...runtimeConfig });
+const descriptor = s.describe();                 // { v, agent_id, room, correlation_id, kind?, cursor? }
+host.persist(serializeSessionDescriptor(descriptor)); // disk / app store / env — the host's call (no secret)
+
+// --- after the restart: re-establish the session + reconstruct the plan ---
+// Re-supply the runtime's registration config (`max_invocations` is required by
+// agent.register on v0.2.1) — it is static deployment config, not session state, so it
+// rides ResumeOptions rather than the descriptor.
+const { session, plan, resumed } = await resumeSession(descriptor, runtimeConfig);
+plan.reconciliation;  // { done, inFlight, ready, blocked } — where the dead runtime left off
+plan.tasks; plan.edges; plan.cursor;             // the durable plan view + a resumption cursor
+// `resumed` is true iff the daemon re-issued the same agent_id; else room-keyed recovery.
+
+// --- stay in sync: subscribe to the task stream (poll fallback by default) ---
+const watcher = watchTasks(session, { cursor: plan.cursor });
+for await (const { task, cursor } of watcher) {
+  /* react to a task-state change; persist `cursor` for the next restart */
+  if (allDone) watcher.stop();
+}
+```
+
+What it does — and only this; it **re-reads** state and never re-dispatches:
+
+- **`SessionDescriptor` — the non-secret resume handle.** Carries only
+  `agent_id` / `room` / `correlation_id` / `kind` / a task `cursor` — **never** a
+  Matrix token, Ed25519 key, device secret, provider key, or `GH_TOKEN`.
+  `serialize` / `parse` (and `MxSession.describe()`) route the record through
+  `assertNoCredentialShapedArgs` on both write and read, so a poisoned field is
+  rejected as `invalid_args`; an unknown `v` fails closed.
+- **`resumeSession(descriptor, options?)` — re-establish + reconstruct.**
+  Re-registers via the **idempotent** re-`agent.register` upsert (same room +
+  persisted `correlation_id`, so audit spans the restart), then reconstructs the
+  durable plan. The runtime's own registration config — `maxInvocations`
+  (**required by `agent.register` on v0.2.1**), `capabilities`, `tools`,
+  `workspace`, and a `kind` override — is supplied via `ResumeOptions`, not the
+  descriptor: it is static deployment config the runtime re-derives on every
+  startup, not session state. A failed re-register rejects with no half-open
+  session; a `task.list` fault yields an **empty-but-valid** `PlanSnapshot`
+  carrying a `fault` code (degrade to "no plan recovered", never re-crash).
+- **`PlanSnapshot` + reconciliation.** The non-secret `ResumedTask` nodes, derived
+  edges, a resumption cursor, and a **pure** done/in-flight/ready/blocked
+  classification. `inFlight` (`executing`/`assigned`) tasks are **observed, not
+  restarted** — their work is durable on the receiving daemon; re-dispatch is
+  T303.
+- **`watchTasks(session)` — subscribe to the task stream.** Emits non-secret
+  `TaskDelta`s as tasks change. The default backend is the **poll fallback** (a
+  clamped re-`task.list` on an injected schedule, cursor/signature-deduped); the
+  push `task.watch` backend is a **one-const swap** (`taskWatchMethod`) once that
+  surface is verified, with the poll as gap recovery. Like the heartbeat, the
+  watcher is lifecycle — never a model-facing `mx_*` verb, never throws to the
+  consumer.
+
+> **Gated (verified-safe).** `task.watch` is **not** a verified v0.2.1 surface, so
+> the AC is satisfied on the landed `task.list` poll surface and the push backend
+> stays gated until pinned. The cursor token shape, the task-id field name, and
+> in-flight durability across a requester restart are pending the two-daemon
+> round-trip (localized consts); the **multi-agent** kill-mid-plan gate is T304.
+
 ## Public API
 
 | Export | Kind | Notes |
@@ -169,7 +241,12 @@ every heartbeat tick, and no env surface is added. Registration is toolbelt-run
 | `TransportPreference` | type | `'auto' \| 'ipc' \| 'cli'` |
 | `RetryPolicy`, `DEFAULT_RETRY_POLICY`, `withRetry`, `backoffDelay` | retry primitives | conservative, pre-dispatch-only by default |
 | `openSession(options?)` | factory | registers an agent, returns an active `MxSession` |
-| `MxSession` | interface | `agentId` / `agentState` / `room` / `correlationId` / `state` / `call` / `liveness` / `close` |
+| `MxSession` | interface | `agentId` / `agentState` / `room` / `correlationId` / `state` / `call` / `liveness` / `describe` / `close` |
+| `resumeSession(descriptor, options?)` | factory | re-establish a session + reconstruct the plan after a restart → `{ session, plan, resumed }` (T302); `options` re-supplies the runtime's register config (`maxInvocations` (required on v0.2.1), `capabilities`, `tools`, `workspace`, `kind`) |
+| `watchTasks(session, options?)` | factory | subscribe to the task stream → `TaskWatcher` (poll fallback; `task.watch` push gated) |
+| `SessionDescriptor`, `TaskCursor`, `serializeSessionDescriptor`, `parseSessionDescriptor`, `assertSessionDescriptor`, `SESSION_DESCRIPTOR_VERSION` | resume handle | the non-secret persisted descriptor + (de)serialize routed through the credential guard |
+| `ResumedTask`, `ResumedTaskState`, `PlanEdge`, `PlanReconciliation`, `PlanSnapshot`, `reconstructPlan`, `reconcile`, `deriveEdges`, `buildPlanSnapshot`, `projectResumedTask`, `mapResumedTaskState`, `advanceCursor`, `readTaskRows`, `readTaskRev`, `DaemonCall`, `TASK_LIST_METHOD` | plan reconstruction | thin non-secret task view + pure reconciliation classifier; never throws |
+| `TaskWatcher`, `TaskDelta`, `WatchOptions`, `TASK_WATCH_METHOD`, `MIN_WATCH_INTERVAL_MS`, `MAX_WATCH_INTERVAL_MS`, `DEFAULT_WATCH_INTERVAL_MS` | task-stream watch | non-secret deltas, clamped injected schedule, cursor dedup, gated push backend |
 | `MxSessionOptions`, `SessionState`, `DEFAULT_HEARTBEAT_INTERVAL_MS` | session types | client ownership, register params, heartbeat + correlation knobs (all gated defaults) |
 | `startHeartbeat`, `HeartbeatHandle`, `HeartbeatOptions`, `HeartbeatSchedule` | heartbeat | cancellable interval loop with an injected scheduler |
 | `newCorrelationId`, `withCorrelationParam`, `CORRELATION_PARAM_KEY` | correlation | `corr_<uuid>` mint + the gated param-stamping rule |
